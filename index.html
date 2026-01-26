@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Control de Gastos - Personal & Negocio</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">💰</div>
+      <div>
+        <div class="title">Control de Gastos</div>
+        <div class="subtitle" id="periodLabel">Periodo actual</div>
+      </div>
+    </div>
+
+    <div class="topActions">
+      <select id="scopeSelect" class="select">
+        <option value="personal">👤 Personal</option>
+        <option value="negocio">🏪 Negocio</option>
+      </select>
+
+      <button id="btnNewCut" class="btn primary">Nuevo corte</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="dashboard">📊 Dashboard</button>
+    <button class="tab" data-tab="movimientos">🧾 Movimientos</button>
+    <button class="tab" data-tab="tarjetas">💳 Tarjetas</button>
+    <button class="tab" data-tab="deudas">📌 Deudas</button>
+    <button class="tab" data-tab="ajustes">⚙️ Ajustes</button>
+    <button class="tab" data-tab="reportes">📈 Reportes</button>
+
+  </nav>
+
+  <main class="container">
+
+
+    <!-- DASHBOARD -->
+    <section class="view active" id="dashboard">
+      <div class="grid2">
+        <div class="card">
+          <h3>Saldo (solo cuentas)</h3>
+          <div class="big" id="saldoActual">$0</div>
+          <small class="muted">Efectivo + Débito/Banco (no incluye crédito)</small>
+        </div>
+
+        <div class="card">
+          <h3>Resultado del corte</h3>
+          <div class="rowStats">
+            <div class="stat">
+              <small>Ingresos</small>
+              <b id="totalIngresos">$0</b>
+            </div>
+            <div class="stat">
+              <small>Gastos/Egresos</small>
+              <b id="totalGastos">$0</b>
+            </div>
+            <div class="stat">
+              <small>Resultado</small>
+              <b id="resultado">$0</b>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardHeader">
+          <h3>Top gastos por categoría</h3>
+          <button class="btn" id="btnQuickAdd">Agregar movimiento</button>
+        </div>
+        <div id="topGastos" class="list"></div>
+      </div>
+    </section>
+
+    <!-- MOVIMIENTOS -->
+    <section class="view" id="movimientos">
+      <div class="grid2">
+        <div class="card">
+          <h3>Nuevo movimiento</h3>
+
+          <form id="formMovimiento" class="form">
+            <div class="formRow">
+              <label>Tipo</label>
+              <select id="tipo" class="select">
+                <option value="gasto">Gasto</option>
+                <option value="egreso">Egreso</option>
+                <option value="ingreso">Ingreso</option>
+              </select>
+            </div>
+
+            <div class="formRow">
+              <label>Categoría</label>
+              <select id="categoria" class="select"></select>
+            </div>
+
+            <div class="formRow">
+              <label>Monto</label>
+              <input id="monto" type="number" placeholder="Ej: 250" required />
+            </div>
+
+            <div class="formRow">
+              <label>Método de pago</label>
+              <select id="mMetodo" class="select">
+                <option value="cuenta">🏦 Cuenta (Efectivo/Débito)</option>
+                <option value="tarjeta">💳 Tarjeta (Crédito)</option>
+              </select>
+            </div>
+
+            <div class="formRow">
+              <label>Origen</label>
+              <select id="mOrigen" class="select"></select>
+            </div>
+
+            <div class="formRow">
+              <label>Descripción</label>
+              <input id="descripcion" type="text" placeholder="Ej: Uber / Comida / Ropa..." />
+            </div>
+
+            <div class="formRow">
+              <label>Fecha</label>
+              <input id="fecha" type="date" />
+            </div>
+
+            <div class="formActions">
+              <button class="btn primary" type="submit">Guardar</button>
+              <button class="btn" type="button" id="btnClearForm">Limpiar</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <h3>Movimientos del corte</h3>
+
+          <div class="formRow">
+            <label>Buscar</label>
+            <input id="searchMov" type="text" placeholder="Buscar..." />
+          </div>
+
+          <div id="listaMovimientos" class="list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TARJETAS -->
+    <section class="view" id="tarjetas">
+      <div class="grid2">
+        <div class="card">
+          <h3>Registrar tarjeta de crédito</h3>
+
+          <form id="formTarjeta" class="form">
+            <div class="formRow">
+              <label>Nombre</label>
+              <input id="tNombre" type="text" placeholder="Ej: BBVA Azul" required />
+            </div>
+
+            <div class="formRow">
+              <label>Límite</label>
+              <input id="tLimite" type="number" placeholder="Ej: 20000" required />
+            </div>
+
+            <div class="formRow">
+              <label>Usado actual</label>
+              <input id="tUsado" type="number" placeholder="Ej: 7000" />
+            </div>
+
+            <div class="formRow">
+              <label>Día de corte</label>
+              <input id="tCorte" type="number" placeholder="Ej: 15" required />
+            </div>
+
+            <div class="formRow">
+              <label>Día de pago</label>
+              <input id="tPago" type="number" placeholder="Ej: 25" required />
+            </div>
+
+            <button class="btn primary" type="submit">Guardar tarjeta</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h3>Mis tarjetas (Crédito)</h3>
+          <div id="listaTarjetas" class="list"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Pagar tarjeta (desde cuenta)</h3>
+        <small class="muted">Esto baja saldo de tu cuenta y baja el usado de tu tarjeta.</small>
+
+        <form id="formPagarTarjeta" class="form">
+          <div class="formRow">
+            <label>Tarjeta</label>
+            <select id="ptTarjeta" class="select"></select>
+          </div>
+
+          <div class="formRow">
+            <label>Pagar desde (Cuenta)</label>
+            <select id="ptCuenta" class="select"></select>
+          </div>
+
+          <div class="formRow">
+            <label>Monto a pagar</label>
+            <input id="ptMonto" type="number" placeholder="Ej: 1500" required />
+          </div>
+
+          <div class="formRow">
+            <label>Fecha</label>
+            <input id="ptFecha" type="date" />
+          </div>
+
+          <button class="btn primary" type="submit">Pagar tarjeta</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- DEUDAS -->
+    <section class="view" id="deudas">
+      <div class="grid2">
+        <div class="card">
+          <h3>Registrar deuda</h3>
+
+          <form id="formDeuda" class="form">
+            <div class="formRow">
+              <label>Nombre</label>
+              <input id="dNombre" type="text" placeholder="Ej: Coppel" required />
+            </div>
+
+            <div class="formRow">
+              <label>Total</label>
+              <input id="dTotal" type="number" placeholder="Ej: 12000" required />
+            </div>
+
+            <div class="formRow">
+              <label>Pago sugerido</label>
+              <input id="dPago" type="number" placeholder="Ej: 800" />
+            </div>
+
+            <div class="formRow">
+              <label>Día de pago</label>
+              <input id="dDiaPago" type="number" placeholder="Ej: 10" />
+            </div>
+
+            <button class="btn primary" type="submit">Guardar deuda</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h3>Mis deudas</h3>
+          <div id="listaDeudas" class="list"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Pagar deuda</h3>
+
+        <form id="formPagarDeuda" class="form">
+          <div class="formRow">
+            <label>Deuda</label>
+            <select id="pdDeuda" class="select"></select>
+          </div>
+
+          <div class="formRow">
+            <label>Monto a pagar</label>
+            <input id="pdMonto" type="number" placeholder="Ej: 500" required />
+          </div>
+
+          <div class="formRow">
+            <label>Método de pago</label>
+            <select id="pdMetodo" class="select">
+              <option value="cuenta">🏦 Cuenta</option>
+              <option value="tarjeta">💳 Tarjeta (Crédito)</option>
+            </select>
+          </div>
+
+          <div class="formRow">
+            <label>Origen</label>
+            <select id="pdOrigen" class="select"></select>
+          </div>
+
+          <div class="formRow">
+            <label>Fecha</label>
+            <input id="pdFecha" type="date" />
+          </div>
+
+          <button class="btn primary" type="submit">Pagar deuda</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- AJUSTES -->
+    <section class="view" id="ajustes">
+      <div class="grid2">
+        <div class="card">
+          <h3>Cuentas (Efectivo / Débito)</h3>
+          <small class="muted">Aquí registras efectivo y tarjetas de débito como “cuentas”.</small>
+
+          <form id="formCuenta" class="form">
+            <div class="formRow">
+              <label>Tipo</label>
+              <select id="cScope" class="select">
+                <option value="personal">👤 Personal</option>
+                <option value="negocio">🏪 Negocio</option>
+              </select>
+            </div>
+
+            <div class="formRow">
+              <label>Nombre</label>
+              <input id="cNombre" type="text" placeholder="Ej: Efectivo / BBVA Débito" required />
+            </div>
+
+            <div class="formRow">
+              <label>Saldo inicial actual</label>
+              <input id="cSaldo" type="number" placeholder="Ej: 3200" required />
+            </div>
+
+            <button class="btn primary" type="submit">Guardar cuenta</button>
+          </form>
+
+          <div id="listaCuentas" class="list"></div>
+        </div>
+
+        <div class="card">
+          <h3>Categorías</h3>
+          <form id="formCategoria" class="form">
+            <div class="formRow">
+              <label>Nueva categoría</label>
+              <input id="catNueva" type="text" placeholder="Ej: Gasolina" required />
+            </div>
+            <button class="btn primary" type="submit">Agregar</button>
+          </form>
+
+          <div id="listaCategorias" class="list"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Presupuesto por categoría (quincenal)</h3>
+        <small class="muted">Si te pasas, te avisará con alerta 🚨</small>
+
+        <form id="formPresupuesto" class="form">
+          <div class="formRow">
+            <label>Categoría</label>
+            <select id="pCategoria" class="select"></select>
+          </div>
+
+          <div class="formRow">
+            <label>Presupuesto quincenal</label>
+            <input id="pMonto" type="number" placeholder="Ej: 1500" required />
+          </div>
+
+          <button class="btn primary" type="submit">Guardar presupuesto</button>
+        </form>
+
+        <div id="listaPresupuestos" class="list"></div>
+      </div>
+
+      <div class="card danger">
+        <h3>Reset</h3>
+        <small class="muted">Borra todo el historial de tu dispositivo.</small>
+        <button class="btn danger" id="btnReset">Borrar todo</button>
+      </div>
+    </section>
+
+    <section class="view" id="reportes">
+  <div class="grid2">
+    <div class="card">
+      <h3>Reporte</h3>
+      <div class="formRow">
+        <label>Rango</label>
+        <select id="repRango" class="select">
+          <option value="semana">Semanal</option>
+          <option value="quincena" selected>Quincenal</option>
+          <option value="mes">Mensual</option>
+        </select>
+      </div>
+
+      <div class="rowStats">
+        <div class="stat">
+          <small>Ingresos</small>
+          <b id="repIngresos">$0</b>
+        </div>
+        <div class="stat">
+          <small>Gastos</small>
+          <b id="repGastos">$0</b>
+        </div>
+        <div class="stat">
+          <small>Ahorro/Resultado</small>
+          <b id="repResultado">$0</b>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px;">
+        <h3>Top categorías</h3>
+        <div id="repTopCats" class="list"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Gráfica (Distribución)</h3>
+      <canvas id="repChart" height="220"></canvas>
+      <small class="muted">*No usa internet, funciona offline.</small>
+      <div id="repLegend" class="legend"></div>
+
+    </div>
+  </div>
+</section>
+
+
+  
+</main>
+
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,1148 @@
+const KEY = "control_gastos_full_v1";
+const $ = (id) => document.getElementById(id);
+
+const money = (n) =>
+  new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(Number(n || 0));
+
+function uid() {
+  return Math.random().toString(16).slice(2) + Date.now().toString(16);
+}
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// ===== DATA =====
+function defaultData() {
+  return {
+    activeCutId: null,
+    activeScope: "personal",
+    cuts: [],
+    categorias: [
+      "Agua", "Luz", "Internet", "Pasajes", "Comida",
+      "Entretenimiento", "Cine", "Ropa", "Apoyo a mamá",
+      "Material", "Herramienta", "Pago deuda", "Otros", "Venta"
+    ],
+    presupuestos: { personal: {}, negocio: {} },
+    autoGastos: { personal: { apoyoMamaActivo: true, apoyoMamaMonto: 0 } },
+    cuentas: [
+      { id: uid(), scope: "personal", nombre: "Efectivo", saldoInicial: 0 },
+      { id: uid(), scope: "personal", nombre: "BBVA Débito", saldoInicial: 0 },
+      { id: uid(), scope: "negocio", nombre: "Caja (Efectivo)", saldoInicial: 0 },
+      { id: uid(), scope: "negocio", nombre: "Banco Negocio", saldoInicial: 0 },
+    ],
+    tarjetas: [],
+    deudas: [],
+  };
+}
+
+function load() {
+  const raw = localStorage.getItem(KEY);
+  if (!raw) return defaultData();
+  try {
+    const parsed = JSON.parse(raw);
+
+    parsed.presupuestos = parsed.presupuestos || { personal: {}, negocio: {} };
+    parsed.autoGastos = parsed.autoGastos || { personal: { apoyoMamaActivo: true, apoyoMamaMonto: 0 } };
+    parsed.categorias = parsed.categorias || defaultData().categorias;
+    parsed.cuentas = parsed.cuentas || defaultData().cuentas;
+    parsed.tarjetas = parsed.tarjetas || [];
+    parsed.deudas = parsed.deudas || [];
+    parsed.cuts = parsed.cuts || [];
+    parsed.activeScope = parsed.activeScope || "personal";
+
+    parsed.tarjetas.forEach(t => { if (t.usado == null) t.usado = 0; });
+    parsed.deudas.forEach(d => { if (d.pendiente == null) d.pendiente = Number(d.total || 0); });
+
+    return parsed;
+  } catch {
+    return defaultData();
+  }
+}
+
+function save() {
+  localStorage.setItem(KEY, JSON.stringify(state));
+}
+
+let state = load();
+
+// ===== CUTS =====
+function getQuincenaPeriod(date = new Date()) {
+  const y = date.getFullYear();
+  const m = date.getMonth();
+  const day = date.getDate();
+
+  let start, end;
+  if (day <= 15) {
+    start = new Date(y, m, 1);
+    end = new Date(y, m, 15);
+  } else {
+    start = new Date(y, m, 16);
+    end = new Date(y, m + 1, 0);
+  }
+
+  return {
+    startISO: start.toISOString().slice(0, 10),
+    endISO: end.toISOString().slice(0, 10),
+  };
+}
+
+function createCut() {
+  const now = new Date();
+  const period = getQuincenaPeriod(now);
+
+  const cut = {
+    id: uid(),
+    createdAt: now.toISOString(),
+    startISO: period.startISO,
+    endISO: period.endISO,
+    personal: { movimientos: [] },
+    negocio: { movimientos: [] },
+  };
+
+  // Apoyo a mamá automático (si existe presupuesto > 0)
+  const apoyo = Number(state.autoGastos?.personal?.apoyoMamaMonto || 0);
+  if (apoyo > 0) {
+    const cuentaPersonal = state.cuentas.find(c => c.scope === "personal")?.id || "";
+    cut.personal.movimientos.push({
+      id: uid(),
+      tipo: "gasto",
+      metodo: "cuenta",
+      cuentaId: cuentaPersonal,
+      tarjetaId: null,
+      categoria: "Apoyo a mamá",
+      monto: apoyo,
+      descripcion: "Apoyo quincenal automático",
+      fecha: period.startISO,
+      auto: true
+    });
+  }
+
+  state.cuts.unshift(cut);
+  state.activeCutId = cut.id;
+  save();
+}
+
+if (!state.activeCutId || state.cuts.length === 0) createCut();
+
+// ===== HELPERS =====
+function activeCut() {
+  return state.cuts.find(c => c.id === state.activeCutId) || state.cuts[0];
+}
+
+function getScope() {
+  return state.activeScope || "personal";
+}
+
+function scopeData() {
+  return activeCut()[getScope()];
+}
+
+function cuentasScope() {
+  return state.cuentas.filter(c => c.scope === getScope());
+}
+
+function tarjetasScope() {
+  return state.tarjetas.filter(t => t.scope === getScope());
+}
+
+function deudasScope() {
+  return state.deudas.filter(d => d.scope === getScope());
+}
+
+function sumMovs(movs, tipo) {
+  return movs.filter(m => m.tipo === tipo).reduce((a, m) => a + Number(m.monto || 0), 0);
+}
+
+function saldoCuenta(cuentaId) {
+  const cuenta = state.cuentas.find(c => c.id === cuentaId);
+  if (!cuenta) return 0;
+
+  const movs = scopeData().movimientos.filter(m => m.metodo === "cuenta" && m.cuentaId === cuentaId);
+  const ingresos = sumMovs(movs, "ingreso");
+  const salidas = sumMovs(movs, "gasto") + sumMovs(movs, "egreso");
+  return Number(cuenta.saldoInicial || 0) + ingresos - salidas;
+}
+
+function saldoPeriodoCuentas() {
+  const scope = getScope();
+  const movs = scopeData().movimientos.filter(m => m.metodo === "cuenta");
+  const ingresos = sumMovs(movs, "ingreso");
+  const salidas = sumMovs(movs, "gasto") + sumMovs(movs, "egreso");
+
+  const saldoInicial = state.cuentas
+    .filter(c => c.scope === scope)
+    .reduce((acc, c) => acc + Number(c.saldoInicial || 0), 0);
+
+  return saldoInicial + ingresos - salidas;
+}
+
+function gastoPorCategoria(cat) {
+  return scopeData().movimientos
+    .filter(m => m.tipo !== "ingreso" && m.categoria === cat)
+    .reduce((acc, m) => acc + Number(m.monto || 0), 0);
+}
+
+function getPresupuesto(cat) {
+  return Number(state.presupuestos?.[getScope()]?.[cat] || 0);
+}
+
+// ===== UI NAV =====
+function switchTab(tabId) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  document.querySelector(`.tab[data-tab="${tabId}"]`)?.classList.add("active");
+  $(tabId)?.classList.add("active");
+}
+
+document.querySelectorAll(".tab").forEach(btn => {
+  btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+});
+
+// ===== RENDER =====
+function renderPeriod() {
+  const cut = activeCut();
+  $("periodLabel").textContent = `Periodo actual: ${cut.startISO} → ${cut.endISO}`;
+}
+
+function renderCategorias() {
+  const sel = $("categoria");
+  sel.innerHTML = "";
+  state.categorias.forEach(cat => {
+    const opt = document.createElement("option");
+    opt.value = cat;
+    opt.textContent = cat;
+    sel.appendChild(opt);
+  });
+
+  const pSel = $("pCategoria");
+  pSel.innerHTML = "";
+  state.categorias.forEach(cat => {
+    const opt = document.createElement("option");
+    opt.value = cat;
+    opt.textContent = cat;
+    pSel.appendChild(opt);
+  });
+
+  const list = $("listaCategorias");
+  list.innerHTML = "";
+  state.categorias.forEach(cat => {
+    const div = document.createElement("div");
+    div.className = "item";
+    div.innerHTML = `
+      <div><b>${cat}</b><br/><small class="muted">Categoría</small></div>
+      <button class="btn" data-del="${cat}">Eliminar</button>
+    `;
+    list.appendChild(div);
+  });
+
+  list.querySelectorAll("[data-del]").forEach(btn => {
+    btn.onclick = () => {
+      const cat = btn.getAttribute("data-del");
+      if (cat === "Apoyo a mamá") return alert("No puedes eliminar 'Apoyo a mamá'.");
+      state.categorias = state.categorias.filter(x => x !== cat);
+      delete state.presupuestos.personal[cat];
+      delete state.presupuestos.negocio[cat];
+      save();
+      renderAll();
+    };
+  });
+}
+
+function renderPresupuestos() {
+  const list = $("listaPresupuestos");
+  list.innerHTML = "";
+
+  const obj = state.presupuestos[getScope()] || {};
+  const cats = Object.keys(obj);
+
+  if (cats.length === 0) {
+    list.innerHTML = `<div class="item"><small class="muted">No hay presupuestos.</small></div>`;
+    return;
+  }
+
+  cats.forEach(cat => {
+    const pres = Number(obj[cat] || 0);
+    const gastado = gastoPorCategoria(cat);
+    const restante = pres - gastado;
+
+    const div = document.createElement("div");
+    div.className = "item";
+    div.innerHTML = `
+      <div>
+        <b>${cat}</b><br/>
+        <small class="muted">Presupuesto: ${money(pres)} · Gastado: ${money(gastado)} · Restante: ${money(restante)}</small>
+      </div>
+      <button class="btn" data-del="${cat}">Eliminar</button>
+    `;
+    list.appendChild(div);
+  });
+
+  list.querySelectorAll("[data-del]").forEach(btn => {
+    btn.onclick = () => {
+      const cat = btn.getAttribute("data-del");
+      delete state.presupuestos[getScope()][cat];
+      save();
+      renderAll();
+    };
+  });
+}
+
+function renderCuentas() {
+  const list = $("listaCuentas");
+  list.innerHTML = "";
+
+  state.cuentas.forEach(c => {
+    const div = document.createElement("div");
+    div.className = "item";
+    div.innerHTML = `
+      <div>
+        <b>${c.scope === "personal" ? "👤" : "🏪"} ${c.nombre}</b><br/>
+        <small class="muted">Saldo inicial: ${money(c.saldoInicial)}</small>
+      </div>
+      <button class="btn" data-del="${c.id}">Eliminar</button>
+    `;
+    list.appendChild(div);
+  });
+
+  list.querySelectorAll("[data-del]").forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.getAttribute("data-del");
+      state.cuentas = state.cuentas.filter(x => x.id !== id);
+      save();
+      renderAll();
+    };
+  });
+}
+
+function renderMovimientoOrigen() {
+  const metodo = $("mMetodo").value;
+  const sel = $("mOrigen");
+  sel.innerHTML = "";
+
+  if (metodo === "cuenta") {
+    cuentasScope().forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = `${c.nombre} · ${money(saldoCuenta(c.id))}`;
+      sel.appendChild(opt);
+    });
+  } else {
+    tarjetasScope().forEach(t => {
+      const usado = Number(t.usado || 0);
+      const limite = Number(t.limite || 0);
+      const disponible = limite - usado;
+
+      const opt = document.createElement("option");
+      opt.value = t.id;
+      opt.textContent = `${t.nombre} · Disponible: ${money(disponible)}`;
+      sel.appendChild(opt);
+    });
+  }
+}
+
+function renderPagarDeudaOrigen() {
+  const metodo = $("pdMetodo").value;
+  const sel = $("pdOrigen");
+  sel.innerHTML = "";
+
+  if (metodo === "cuenta") {
+    cuentasScope().forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = `${c.nombre} · ${money(saldoCuenta(c.id))}`;
+      sel.appendChild(opt);
+    });
+  } else {
+    tarjetasScope().forEach(t => {
+      const usado = Number(t.usado || 0);
+      const limite = Number(t.limite || 0);
+      const disponible = limite - usado;
+
+      const opt = document.createElement("option");
+      opt.value = t.id;
+      opt.textContent = `${t.nombre} · Disponible: ${money(disponible)}`;
+      sel.appendChild(opt);
+    });
+  }
+}
+
+function renderPagarTarjetaSelects() {
+  const selTarjeta = $("ptTarjeta");
+  const selCuenta = $("ptCuenta");
+
+  selTarjeta.innerHTML = "";
+  tarjetasScope().forEach(t => {
+    const usado = Number(t.usado || 0);
+    const opt = document.createElement("option");
+    opt.value = t.id;
+    opt.textContent = `${t.nombre} · Usado: ${money(usado)}`;
+    selTarjeta.appendChild(opt);
+  });
+
+  selCuenta.innerHTML = "";
+  cuentasScope().forEach(c => {
+    const opt = document.createElement("option");
+    opt.value = c.id;
+    opt.textContent = `${c.nombre} · ${money(saldoCuenta(c.id))}`;
+    selCuenta.appendChild(opt);
+  });
+}
+
+function renderDashboard() {
+  const movs = scopeData().movimientos;
+  const ingresos = sumMovs(movs, "ingreso");
+  const gastos = sumMovs(movs, "gasto") + sumMovs(movs, "egreso");
+
+  $("saldoActual").textContent = money(saldoPeriodoCuentas());
+  $("totalIngresos").textContent = money(ingresos);
+  $("totalGastos").textContent = money(gastos);
+  $("resultado").textContent = money(ingresos - gastos);
+
+  const top = $("topGastos");
+  top.innerHTML = "";
+
+  const map = {};
+  movs.filter(m => m.tipo !== "ingreso").forEach(m => {
+    map[m.categoria] = (map[m.categoria] || 0) + Number(m.monto || 0);
+  });
+
+  const topData = Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  if (topData.length === 0) {
+    top.innerHTML = `<div class="item"><small class="muted">No hay gastos aún.</small></div>`;
+    return;
+  }
+
+  topData.forEach(([cat, val]) => {
+    const pres = getPresupuesto(cat);
+    const excedido = pres > 0 && val > pres;
+
+    const div = document.createElement("div");
+    div.className = "item";
+    div.innerHTML = `
+      <div>
+        <b>${cat}</b><br/>
+        <small class="muted">Total: ${money(val)} ${pres>0?`· Presupuesto: ${money(pres)}`:""}</small>
+      </div>
+      <span class="tag">${excedido ? "🚨 Excedido" : "Top"}</span>
+    `;
+    top.appendChild(div);
+  });
+}
+
+function renderMovimientos(filter="") {
+  const list = $("listaMovimientos");
+  list.innerHTML = "";
+
+  let movs = [...scopeData().movimientos].sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
+
+  if (filter.trim()) {
+    const f = filter.toLowerCase();
+    movs = movs.filter(m => `${m.descripcion} ${m.categoria} ${m.tipo}`.toLowerCase().includes(f));
+  }
+
+  if (movs.length === 0) {
+    list.innerHTML = `<div class="item"><small class="muted">No hay movimientos.</small></div>`;
+    return;
+  }
+
+  movs.forEach(m => {
+    const div = document.createElement("div");
+    div.className = "item";
+
+    const sign = m.tipo === "ingreso" ? "+" : "-";
+    const color = m.tipo === "ingreso" ? "green" : "red";
+    const metodoTxt = m.metodo === "tarjeta" ? "💳 Tarjeta" : "🏦 Cuenta";
+
+    div.innerHTML = `
+      <div>
+        <b>${m.categoria}</b> <small class="muted">(${m.tipo})</small><br/>
+        <small class="muted">${m.fecha} · ${m.descripcion || "—"} · ${metodoTxt}</small>
+      </div>
+      <div style="text-align:right;">
+        <b class="${color}">${sign}${money(m.monto)}</b><br/>
+        <button class="btn" data-del="${m.id}">Eliminar</button>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+
+  list.querySelectorAll("[data-del]").forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.getAttribute("data-del");
+      const mov = scopeData().movimientos.find(x => x.id === id);
+      if (!mov) return;
+
+      // Revertir tarjeta si aplica
+      if (mov.metodo === "tarjeta" && mov.tarjetaId) {
+        const tarjeta = state.tarjetas.find(t => t.id === mov.tarjetaId);
+        if (tarjeta) {
+          tarjeta.usado = Number(tarjeta.usado || 0) - Number(mov.monto || 0);
+          if (tarjeta.usado < 0) tarjeta.usado = 0;
+        }
+      }
+
+      scopeData().movimientos = scopeData().movimientos.filter(x => x.id !== id);
+      save();
+      renderAll();
+    };
+  });
+}
+
+function renderTarjetas() {
+  const list = $("listaTarjetas");
+  list.innerHTML = "";
+
+  const tarjetas = tarjetasScope();
+  if (tarjetas.length === 0) {
+    list.innerHTML = `<div class="item"><small class="muted">No hay tarjetas aún.</small></div>`;
+    return;
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "cardsWrap";
+
+  tarjetas.forEach(t => {
+    const limite = Number(t.limite || 0);
+    const usado = Number(t.usado || 0);
+    const disponible = limite - usado;
+    const percent = limite > 0 ? Math.min(100, Math.max(0, (usado / limite) * 100)) : 0;
+
+    const card = document.createElement("div");
+    card.className = "creditCard";
+    card.innerHTML = `
+      <div class="ccTop">
+        <div class="ccBrand">
+          <span class="ccIcon">💳</span>
+          <div>
+            <div class="ccName">${t.nombre}</div>
+            <div class="ccMeta">Crédito · Corte ${t.corte} · Pago ${t.pago}</div>
+          </div>
+        </div>
+        <button class="ccDelete" data-del="${t.id}" title="Eliminar">✕</button>
+      </div>
+
+      <div class="ccNumbers">
+        <div class="ccRow"><span class="ccLabel">Límite</span><b>${money(limite)}</b></div>
+        <div class="ccRow"><span class="ccLabel">Usado</span><b class="red">${money(usado)}</b></div>
+        <div class="ccRow"><span class="ccLabel">Disponible</span><b class="green">${money(disponible)}</b></div>
+      </div>
+
+      <div class="ccBar">
+        <div class="ccBarFill" style="width:${percent}%;"></div>
+      </div>
+
+      <div class="ccFooter">
+        <small>Uso: ${percent.toFixed(0)}%</small>
+        <small>${disponible < 0 ? "🚨 Sin crédito" : "Disponible"}</small>
+      </div>
+    `;
+
+    wrap.appendChild(card);
+  });
+
+  list.appendChild(wrap);
+
+  list.querySelectorAll("[data-del]").forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.getAttribute("data-del");
+      state.tarjetas = state.tarjetas.filter(x => x.id !== id);
+      save();
+      renderAll();
+    };
+  });
+}
+
+function renderDeudas() {
+  const list = $("listaDeudas");
+  list.innerHTML = "";
+
+  const deudas = deudasScope();
+  if (deudas.length === 0) {
+    list.innerHTML = `<div class="item"><small class="muted">No hay deudas.</small></div>`;
+    return;
+  }
+
+  deudas.forEach(d => {
+    const pendiente = Number(d.pendiente ?? d.total ?? 0);
+
+    const div = document.createElement("div");
+    div.className = "item";
+    div.innerHTML = `
+      <div>
+        <b>${d.nombre}</b><br/>
+        <small class="muted">Total: ${money(d.total)} · Pendiente: ${money(pendiente)}</small><br/>
+        <small class="muted">Pago sugerido: ${money(d.pago || 0)} · Día ${d.diaPago || "-"}</small>
+      </div>
+      <button class="btn" data-del="${d.id}">Eliminar</button>
+    `;
+    list.appendChild(div);
+  });
+
+  list.querySelectorAll("[data-del]").forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.getAttribute("data-del");
+      state.deudas = state.deudas.filter(x => x.id !== id);
+      save();
+      renderAll();
+    };
+  });
+
+  const sel = $("pdDeuda");
+  sel.innerHTML = "";
+  deudas.forEach(d => {
+    const pendiente = Number(d.pendiente ?? d.total ?? 0);
+    const opt = document.createElement("option");
+    opt.value = d.id;
+    opt.textContent = `${d.nombre} · Pendiente: ${money(pendiente)}`;
+    sel.appendChild(opt);
+  });
+}
+
+function renderAll() {
+  $("scopeSelect").value = getScope();
+
+  renderPeriod();
+  renderCategorias();
+  renderPresupuestos();
+  renderCuentas();
+  renderMovimientoOrigen();
+  renderPagarDeudaOrigen();
+  renderPagarTarjetaSelects();
+
+  renderDashboard();
+  renderMovimientos($("searchMov").value || "");
+  renderTarjetas();
+  renderDeudas();
+  renderReportes();
+
+}
+
+// ===== EVENTS =====
+$("scopeSelect").addEventListener("change", (e) => {
+  state.activeScope = e.target.value;
+  save();
+  renderAll();
+});
+
+$("btnNewCut").addEventListener("click", () => {
+  if (!confirm("¿Crear nuevo corte quincenal?")) return;
+  createCut();
+  renderAll();
+});
+
+$("btnQuickAdd").addEventListener("click", () => {
+  switchTab("movimientos");
+});
+
+$("btnClearForm").addEventListener("click", () => {
+  $("tipo").value = "gasto";
+  $("mMetodo").value = "cuenta";
+  renderMovimientoOrigen();
+  $("monto").value = "";
+  $("descripcion").value = "";
+  $("fecha").value = todayISO();
+});
+
+$("mMetodo").addEventListener("change", renderMovimientoOrigen);
+$("pdMetodo").addEventListener("change", renderPagarDeudaOrigen);
+
+$("searchMov").addEventListener("input", (e) => {
+  renderMovimientos(e.target.value);
+});
+
+$("fecha").value = todayISO();
+$("pdFecha").value = todayISO();
+$("ptFecha").value = todayISO();
+
+$("repRango")?.addEventListener("change", () => {
+  renderReportes();
+});
+
+window.addEventListener("resize", () => {
+  renderReportes();
+});
+
+// Guardar movimiento
+$("formMovimiento").addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const tipo = $("tipo").value;
+  const categoria = $("categoria").value;
+  const monto = Number($("monto").value || 0);
+  const descripcion = $("descripcion").value.trim();
+  const fecha = $("fecha").value || todayISO();
+
+  const metodo = $("mMetodo").value;
+  const origenId = $("mOrigen").value;
+
+  if (monto <= 0) return alert("Monto inválido.");
+
+  // Ingreso solo a cuenta
+  if (tipo === "ingreso" && metodo === "tarjeta") {
+    alert("Un ingreso no entra directo a tarjeta. Selecciona Cuenta.");
+    $("mMetodo").value = "cuenta";
+    renderMovimientoOrigen();
+    return;
+  }
+
+  if (metodo === "cuenta") {
+    const saldo = saldoCuenta(origenId);
+    if (tipo !== "ingreso" && monto > saldo) return alert("No tienes saldo suficiente.");
+
+    scopeData().movimientos.push({
+      id: uid(),
+      tipo,
+      metodo: "cuenta",
+      cuentaId: origenId,
+      tarjetaId: null,
+      categoria,
+      monto,
+      descripcion,
+      fecha
+    });
+  } else {
+    const tarjeta = state.tarjetas.find(t => t.id === origenId);
+    if (!tarjeta) return alert("Tarjeta no encontrada.");
+
+    tarjeta.usado = Number(tarjeta.usado || 0);
+    const disponible = Number(tarjeta.limite || 0) - tarjeta.usado;
+
+    if (tipo === "ingreso") return;
+    if (monto > disponible) return alert("No tienes crédito disponible.");
+
+    tarjeta.usado += monto;
+
+    scopeData().movimientos.push({
+      id: uid(),
+      tipo,
+      metodo: "tarjeta",
+      cuentaId: null,
+      tarjetaId: origenId,
+      categoria,
+      monto,
+      descripcion,
+      fecha
+    });
+  }
+
+  save();
+
+  // alerta presupuesto
+  if (tipo !== "ingreso") {
+    const pres = getPresupuesto(categoria);
+    if (pres > 0) {
+      const gastado = gastoPorCategoria(categoria);
+      if (gastado > pres) {
+        alert(`🚨 Te pasaste del presupuesto en "${categoria}".\nGastado: ${money(gastado)} / Presupuesto: ${money(pres)}`);
+      }
+    }
+  }
+
+  $("monto").value = "";
+  $("descripcion").value = "";
+  renderAll();
+});
+
+// Guardar tarjeta
+$("formTarjeta").addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const limite = Number($("tLimite").value || 0);
+  const usado = Number($("tUsado").value || 0);
+
+  if (usado > limite) return alert("El usado no puede ser mayor que el límite.");
+
+  state.tarjetas.push({
+    id: uid(),
+    scope: getScope(),
+    nombre: $("tNombre").value.trim(),
+    limite,
+    usado,
+    corte: Number($("tCorte").value || 1),
+    pago: Number($("tPago").value || 1),
+  });
+
+  save();
+
+  $("tNombre").value = "";
+  $("tLimite").value = "";
+  $("tUsado").value = "";
+  $("tCorte").value = "";
+  $("tPago").value = "";
+
+  renderAll();
+});
+
+// Pagar tarjeta (desde cuenta)
+$("formPagarTarjeta").addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const tarjetaId = $("ptTarjeta").value;
+  const cuentaId = $("ptCuenta").value;
+  const monto = Number($("ptMonto").value || 0);
+  const fecha = $("ptFecha").value || todayISO();
+
+  if (monto <= 0) return alert("Monto inválido.");
+
+  const tarjeta = state.tarjetas.find(t => t.id === tarjetaId);
+  if (!tarjeta) return alert("Tarjeta no encontrada.");
+
+  const saldo = saldoCuenta(cuentaId);
+  if (monto > saldo) return alert("No tienes saldo suficiente en esa cuenta.");
+
+  tarjeta.usado = Number(tarjeta.usado || 0);
+  if (monto > tarjeta.usado) return alert("No puedes pagar más de lo usado.");
+
+  // Registrar egreso en cuenta
+  scopeData().movimientos.push({
+    id: uid(),
+    tipo: "egreso",
+    metodo: "cuenta",
+    cuentaId,
+    tarjetaId: null,
+    categoria: "Pago tarjeta",
+    monto,
+    descripcion: `Pago a tarjeta ${tarjeta.nombre}`,
+    fecha
+  });
+
+  // Bajar usado
+  tarjeta.usado -= monto;
+
+  save();
+  $("ptMonto").value = "";
+  renderAll();
+  alert("✅ Pago de tarjeta aplicado.");
+});
+
+// Guardar deuda
+$("formDeuda").addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const total = Number($("dTotal").value || 0);
+
+  state.deudas.push({
+    id: uid(),
+    scope: getScope(),
+    nombre: $("dNombre").value.trim(),
+    total,
+    pendiente: total,
+    pago: Number($("dPago").value || 0),
+    diaPago: Number($("dDiaPago").value || 1),
+  });
+
+  save();
+
+  $("dNombre").value = "";
+  $("dTotal").value = "";
+  $("dPago").value = "";
+  $("dDiaPago").value = "";
+
+  renderAll();
+});
+
+// Pagar deuda
+$("formPagarDeuda").addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const deudaId = $("pdDeuda").value;
+  const monto = Number($("pdMonto").value || 0);
+  const metodo = $("pdMetodo").value;
+  const origenId = $("pdOrigen").value;
+  const fecha = $("pdFecha").value || todayISO();
+
+  const deuda = state.deudas.find(d => d.id === deudaId);
+  if (!deuda) return alert("Deuda no encontrada.");
+
+  deuda.pendiente = Number(deuda.pendiente ?? deuda.total ?? 0);
+
+  if (monto <= 0) return alert("Monto inválido.");
+  if (monto > deuda.pendiente) return alert("El monto es mayor que lo pendiente.");
+
+  if (metodo === "cuenta") {
+    const saldo = saldoCuenta(origenId);
+    if (monto > saldo) return alert("No tienes saldo suficiente.");
+
+    scopeData().movimientos.push({
+      id: uid(),
+      tipo: "egreso",
+      metodo: "cuenta",
+      cuentaId: origenId,
+      tarjetaId: null,
+      categoria: "Pago deuda",
+      monto,
+      descripcion: `Pago a ${deuda.nombre}`,
+      fecha,
+    });
+  } else {
+    const tarjeta = state.tarjetas.find(t => t.id === origenId);
+    if (!tarjeta) return alert("Tarjeta no encontrada.");
+
+    tarjeta.usado = Number(tarjeta.usado || 0);
+    const disponible = Number(tarjeta.limite || 0) - tarjeta.usado;
+    if (monto > disponible) return alert("No tienes crédito disponible.");
+
+    tarjeta.usado += monto;
+  }
+
+  deuda.pendiente -= monto;
+
+  save();
+  $("pdMonto").value = "";
+  renderAll();
+  alert("✅ Pago de deuda aplicado.");
+});
+
+// Guardar cuenta
+$("formCuenta").addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const scope = $("cScope").value;
+  const nombre = $("cNombre").value.trim();
+  const saldo = Number($("cSaldo").value || 0);
+
+  state.cuentas.push({ id: uid(), scope, nombre, saldoInicial: saldo });
+  save();
+
+  $("cNombre").value = "";
+  $("cSaldo").value = "";
+
+  renderAll();
+});
+
+// Guardar categoría
+$("formCategoria").addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const nueva = $("catNueva").value.trim();
+  if (!nueva) return;
+
+  if (state.categorias.includes(nueva)) return alert("Esa categoría ya existe.");
+
+  state.categorias.push(nueva);
+  save();
+
+  $("catNueva").value = "";
+  renderAll();
+});
+
+// Guardar presupuesto
+$("formPresupuesto").addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const cat = $("pCategoria").value;
+  const monto = Number($("pMonto").value || 0);
+
+  state.presupuestos[getScope()][cat] = monto;
+
+  // Apoyo mamá automático
+  if (getScope() === "personal" && cat === "Apoyo a mamá") {
+    state.autoGastos.personal.apoyoMamaMonto = monto;
+  }
+
+  save();
+  $("pMonto").value = "";
+  renderAll();
+});
+
+// Reset
+$("btnReset").addEventListener("click", () => {
+  if (!confirm("¿Seguro que deseas borrar todo?")) return;
+  localStorage.removeItem(KEY);
+  state = defaultData();
+  createCut();
+  renderAll();
+});
+
+
+//reportes 
+
+function getRangeDates(rango) {
+  const now = new Date();
+  const end = new Date(now);
+
+  let start = new Date(now);
+
+  if (rango === "semana") {
+    start.setDate(now.getDate() - 6);
+  } else if (rango === "mes") {
+    start = new Date(now.getFullYear(), now.getMonth(), 1);
+  } else {
+    // quincena actual
+    const p = getQuincenaPeriod(now);
+    start = new Date(p.startISO);
+  }
+
+  const startISO = start.toISOString().slice(0, 10);
+  const endISO = end.toISOString().slice(0, 10);
+  return { startISO, endISO };
+}
+
+function inRange(dateISO, startISO, endISO) {
+  return dateISO >= startISO && dateISO <= endISO;
+}
+
+function getMovimientosEnRango(rango) {
+  const { startISO, endISO } = getRangeDates(rango);
+
+  // junta movimientos de TODOS los cortes, no solo el actual
+  const scope = getScope();
+  const all = [];
+  state.cuts.forEach(cut => {
+    const movs = (cut[scope]?.movimientos || []);
+    movs.forEach(m => {
+      if (m.fecha && inRange(m.fecha, startISO, endISO)) all.push(m);
+    });
+  });
+
+  return all;
+}
+
+function drawDonut(canvasId, dataMap) {
+  const canvas = $(canvasId);
+  if (!canvas) return;
+
+  const ctx = canvas.getContext("2d");
+
+  // Ajuste real de tamaño (para que se vea en móvil)
+  const w = canvas.offsetWidth || 320;
+  const h = 260;
+
+  canvas.width = Math.floor(w * window.devicePixelRatio);
+  canvas.height = Math.floor(h * window.devicePixelRatio);
+  canvas.style.height = h + "px";
+  canvas.style.width = w + "px";
+
+  ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  const entries = Object.entries(dataMap).filter(([, v]) => v > 0);
+  const total = entries.reduce((a, [, v]) => a + v, 0);
+
+  if (entries.length === 0 || total <= 0) {
+    ctx.fillStyle = "rgba(255,255,255,.65)";
+    ctx.font = "14px system-ui";
+    ctx.fillText("Sin datos para graficar.", 14, 30);
+    return;
+  }
+
+  const cx = w / 2;
+  const cy = h / 2;
+  const r = Math.min(w, h) * 0.32;
+  const rInner = r * 0.60;
+
+  let startAngle = -Math.PI / 2;
+
+  // Dibujo porciones
+  entries.forEach(([label, value], i) => {
+    const angle = (value / total) * (Math.PI * 2);
+    const endAngle = startAngle + angle;
+
+    const hue = (i * 60) % 360;
+    ctx.fillStyle = `hsla(${hue}, 80%, 60%, 0.9)`;
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, startAngle, endAngle);
+    ctx.closePath();
+    ctx.fill();
+
+    startAngle = endAngle;
+  });
+
+  // Hueco
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.beginPath();
+  ctx.arc(cx, cy, rInner, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalCompositeOperation = "source-over";
+
+  // Texto centro
+  ctx.fillStyle = "rgba(255,255,255,.92)";
+  ctx.textAlign = "center";
+  ctx.font = "bold 16px system-ui";
+  ctx.fillText("Gastos", cx, cy - 8);
+  ctx.font = "bold 14px system-ui";
+  ctx.fillText(money(total), cx, cy + 16);
+}
+
+
+function renderReportes() {
+  const rango = $("repRango")?.value || "quincena";
+  const movs = getMovimientosEnRango(rango);
+
+  const ingresos = movs.filter(m => m.tipo === "ingreso").reduce((a,m)=>a+Number(m.monto||0),0);
+  const gastos = movs.filter(m => m.tipo !== "ingreso").reduce((a,m)=>a+Number(m.monto||0),0);
+
+  $("repIngresos").textContent = money(ingresos);
+  $("repGastos").textContent = money(gastos);
+  $("repResultado").textContent = money(ingresos - gastos);
+
+  const map = {};
+  movs.filter(m => m.tipo !== "ingreso").forEach(m => {
+    map[m.categoria] = (map[m.categoria] || 0) + Number(m.monto || 0);
+  });
+
+  // top categorías
+  const top = Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const list = $("repTopCats");
+  list.innerHTML = "";
+
+  if (top.length === 0) {
+    list.innerHTML = `<div class="item"><small class="muted">Sin gastos en este rango.</small></div>`;
+  } else {
+    top.forEach(([cat, val]) => {
+      const div = document.createElement("div");
+      div.className = "item";
+      div.innerHTML = `
+        <div><b>${cat}</b><br/><small class="muted">${money(val)}</small></div>
+        <span class="tag">Top</span>
+      `;
+      list.appendChild(div);
+    });
+  }
+
+  drawDonut("repChart", map);
+    // ===== Leyenda por colores =====
+  const legend = $("repLegend");
+  if (legend) {
+    legend.innerHTML = "";
+
+    const entries = Object.entries(map).filter(([, v]) => v > 0);
+    const total = entries.reduce((a, [, v]) => a + v, 0);
+
+    if (entries.length === 0 || total <= 0) {
+      legend.innerHTML = `<div class="item"><small class="muted">Sin gastos para mostrar.</small></div>`;
+    } else {
+      // ordenado de mayor a menor
+      entries.sort((a,b)=>b[1]-a[1]);
+
+      entries.forEach(([cat, val], i) => {
+        const pct = (val / total) * 100;
+        const hue = (i * 60) % 360;
+        const color = `hsla(${hue}, 80%, 60%, 0.9)`;
+
+        const row = document.createElement("div");
+        row.className = "legendItem";
+        row.innerHTML = `
+          <div class="legendLeft">
+            <span class="legendDot" style="background:${color}"></span>
+            <div>
+              <div class="legendName">${cat}</div>
+              <div class="legendSub">${money(val)}</div>
+            </div>
+          </div>
+          <div class="legendRight">
+            <div class="legendPct">${pct.toFixed(0)}%</div>
+          </div>
+        `;
+        legend.appendChild(row);
+      });
+    }
+  }
+
+
+}
+
+renderAll();
