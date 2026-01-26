@@ -21,9 +21,10 @@
       <select id="scopeSelect" class="select">
         <option value="personal">👤 Personal</option>
         <option value="negocio">🏪 Negocio</option>
-      </select>
+        </select>
 
       <button id="btnNewCut" class="btn primary">Nuevo corte</button>
+      <button id="btnLock" class="btn">🔒 Bloquear</button>
     </div>
   </header>
 
@@ -413,6 +414,36 @@
 
   
 </main>
+
+
+
+<!-- 🔒 Pantalla de PIN -->
+<div id="pinOverlay" class="pinOverlay">
+  <div class="pinCard">
+    <div class="pinLogo">🔒</div>
+    <h2 id="pinTitle">Bloqueado</h2>
+    <p id="pinSubtitle" class="muted">Ingresa tu PIN para continuar</p>
+
+    <div class="pinDots" id="pinDots">
+      <span class="dot"></span>
+      <span class="dot"></span>
+      <span class="dot"></span>
+      <span class="dot"></span>
+    </div>
+
+    <input id="pinInput" class="pinInput" inputmode="numeric" maxlength="4" placeholder="••••" />
+
+    <div class="pinActions">
+      <button class="btn" id="btnPinClear">Borrar</button>
+      <button class="btn primary" id="btnPinEnter">Entrar</button>
+    </div>
+
+    <button class="btn danger pinDanger" id="btnPinResetAll" title="Borra todo y reinicia">
+      Olvidé el PIN (Reset total)
+    </button>
+  </div>
+</div>
+
 
 
   <script src="app.js"></script>

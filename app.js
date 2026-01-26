@@ -1,4 +1,97 @@
 const KEY = "control_gastos_full_v1";
+// ===== PIN =====
+const PIN_KEY = "control_gastos_pin";
+const PIN_UNLOCK_KEY = "control_gastos_pin_unlocked";
+
+function getSavedPin() {
+  return localStorage.getItem(PIN_KEY); // string o null
+}
+
+function setSavedPin(pin) {
+  localStorage.setItem(PIN_KEY, pin);
+}
+
+function isUnlocked() {
+  return localStorage.getItem(PIN_UNLOCK_KEY) === "1";
+}
+
+function setUnlocked(val) {
+  localStorage.setItem(PIN_UNLOCK_KEY, val ? "1" : "0");
+}
+
+function showPinOverlay() {
+  $("pinOverlay").classList.add("active");
+  $("pinInput").value = "";
+  updatePinDots();
+  $("pinInput").focus();
+}
+
+function hidePinOverlay() {
+  $("pinOverlay").classList.remove("active");
+}
+
+function updatePinDots() {
+  const v = ($("pinInput").value || "").slice(0, 4);
+  $("pinInput").value = v;
+
+  const dots = $("pinDots").querySelectorAll(".dot");
+  dots.forEach((d, i) => {
+    if (i < v.length) d.classList.add("filled");
+    else d.classList.remove("filled");
+  });
+}
+
+function pinFlowText() {
+  const pin = getSavedPin();
+  if (!pin) {
+    $("pinTitle").textContent = "Crear PIN";
+    $("pinSubtitle").textContent = "Crea un PIN de 4 dígitos para proteger tu app";
+    $("btnPinEnter").textContent = "Guardar PIN";
+  } else {
+    $("pinTitle").textContent = "Bloqueado";
+    $("pinSubtitle").textContent = "Ingresa tu PIN para continuar";
+    $("btnPinEnter").textContent = "Entrar";
+  }
+}
+
+function tryUnlockOrCreatePin() {
+  const input = ($("pinInput").value || "").trim();
+
+  if (!/^\d{4}$/.test(input)) {
+    alert("El PIN debe ser de 4 dígitos.");
+    return;
+  }
+
+  const saved = getSavedPin();
+
+  // Crear PIN si no existe
+  if (!saved) {
+    setSavedPin(input);
+    setUnlocked(true);
+    hidePinOverlay();
+    alert("✅ PIN creado.");
+    renderAll();
+    return;
+  }
+
+  // Validar PIN
+  if (input === saved) {
+    setUnlocked(true);
+    hidePinOverlay();
+    renderAll();
+  } else {
+    $("pinInput").value = "";
+    updatePinDots();
+    alert("❌ PIN incorrecto.");
+  }
+}
+
+function lockApp() {
+  setUnlocked(false);
+  pinFlowText();
+  showPinOverlay();
+}
+
 const $ = (id) => document.getElementById(id);
 
 const money = (n) =>
@@ -663,6 +756,36 @@ window.addEventListener("resize", () => {
   renderReportes();
 });
 
+// ===== Eventos PIN =====
+$("pinInput").addEventListener("input", updatePinDots);
+
+$("btnPinClear").addEventListener("click", () => {
+  $("pinInput").value = "";
+  updatePinDots();
+  $("pinInput").focus();
+});
+
+$("btnPinEnter").addEventListener("click", () => {
+  tryUnlockOrCreatePin();
+});
+
+$("pinInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") tryUnlockOrCreatePin();
+});
+
+$("btnLock").addEventListener("click", () => {
+  lockApp();
+});
+
+// Reset total si olvidas PIN
+$("btnPinResetAll").addEventListener("click", () => {
+  if (!confirm("⚠️ Esto borrará TODO (datos + PIN).\n¿Deseas continuar?")) return;
+  localStorage.removeItem(KEY);
+  localStorage.removeItem(PIN_KEY);
+  localStorage.removeItem(PIN_UNLOCK_KEY);
+  location.reload();
+});
+
 // Guardar movimiento
 $("formMovimiento").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -1145,4 +1268,13 @@ function renderReportes() {
 
 }
 
+pinFlowText();
+
+if (!isUnlocked()) {
+  showPinOverlay();
+} else {
+  hidePinOverlay();
+}
+
 renderAll();
+
