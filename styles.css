@@ -1,12 +1,17 @@
 :root{
-  --bg:#0b1020;
-  --card:#121a33;
-  --muted:rgba(255,255,255,.65);
-  --text:#fff;
-  --stroke:rgba(255,255,255,.10);
-  --shadow:0 12px 30px rgba(0,0,0,.25);
-  --radius:18px;
+ 
+  --bg:#0f172a;             
+  --card:#111827;           
+  --text:#e5e7eb;            
+  --muted:rgba(229,231,235,.65);
+  --stroke:rgba(148,163,184,.18);
+  --shadow:0 10px 28px rgba(0,0,0,.35);
+  --radius:16px;
+  --accent:#2563eb;          
+  --success:#16a34a;         
+  --danger:#dc2626;         
 }
+
 
 *{box-sizing:border-box}
 body{
@@ -172,7 +177,7 @@ input, select{
 }
 .btn:active{ transform: scale(.98); }
 .btn.primary{
-  background: rgba(120,90,255,.45);
+  background:#1d4ed8;
   border:1px solid rgba(120,90,255,.55);
 }
 .btn.danger{
@@ -220,8 +225,8 @@ input, select{
   white-space:nowrap;
 }
 
-.green{ color:#1fbf75; }
-.red{ color:#ff5a5a; }
+.green{ color:var(--success); }
+.red{ color:var(--danger); }
 
 .card.danger{
   border:1px solid rgba(255,90,90,.25);
@@ -238,15 +243,14 @@ input, select{
 .creditCard{
   border-radius:18px;
   padding:16px;
-  background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04));
-  border: 1px solid rgba(255,255,255,0.10);
-  box-shadow: 0 10px 25px rgba(0,0,0,0.18);
-  backdrop-filter: blur(10px);
-  transform: translateY(0);
-  transition: transform .18s ease, box-shadow .18s ease;
+  background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  border: 1px solid rgba(148,163,184,.18);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+  backdrop-filter: blur(6px);
   position:relative;
   overflow:hidden;
 }
+
 
 .creditCard:active{ transform: scale(0.99); }
 .creditCard:hover{
