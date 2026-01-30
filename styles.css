@@ -18,6 +18,7 @@ body{
   color:var(--text);
 }
 
+
 .topbar{
   position:sticky;
   top:0;
@@ -504,3 +505,132 @@ input, select{
   margin-top: 12px;
   width: 100%;
 }
+
+
+
+
+/* =========================
+   RESPONSIVE (MÓVIL / TABLET)
+   ========================= */
+
+/* Evita desbordes horizontales */
+html, body{
+  width: 100%;
+  overflow-x: hidden;
+}
+
+/* Android: evita zoom en inputs */
+input, select, textarea{
+  font-size: 16px;
+  max-width: 100%;
+}
+
+/* Ajuste general de padding en móvil */
+@media (max-width: 600px){
+  .container{
+    padding: 12px;
+  }
+
+  .topbar{
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .brand{
+    justify-content: space-between;
+  }
+
+  .topActions{
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .topActions .btn,
+  .topActions select{
+    width: 100%;
+  }
+
+  .tabs{
+    padding: 10px 12px;
+  }
+
+  .tab{
+    padding: 9px 10px;
+    border-radius: 12px;
+  }
+
+  .card{
+    padding: 12px;
+  }
+
+  .big{
+    font-size: 24px;
+  }
+
+  /* Stats en 1 o 2 columnas */
+  .rowStats{
+    grid-template-columns: 1fr;
+  }
+
+  /* Botones apilados */
+  .formActions{
+    flex-direction: column;
+  }
+
+  .formActions .btn{
+    width: 100%;
+  }
+
+  /* Tarjetas físicas: una por fila */
+  .cardsWrap{
+    grid-template-columns: 1fr;
+  }
+
+  .creditCard{
+    padding: 14px;
+  }
+
+  /* Texto de tarjeta más compacto */
+  .ccName{
+    font-size: 15px;
+  }
+}
+
+/* Tablet: stats en 2 columnas */
+@media (min-width: 601px) and (max-width: 900px){
+  .rowStats{
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .topActions{
+    flex-wrap: wrap;
+  }
+}
+
+/* Pantallas muy pequeñas */
+@media (max-width: 380px){
+  .logo{
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+  }
+
+  .title{
+    font-size: 14px;
+  }
+
+  .subtitle{
+    font-size: 11px;
+  }
+
+  .tab{
+    font-size: 13px;
+  }
+
+  .legendName{
+    max-width: 130px;
+  }
+}
+
