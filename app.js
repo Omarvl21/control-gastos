@@ -2,6 +2,17 @@ const KEY = "control_gastos_full_v1";
 // ===== PIN =====
 const PIN_KEY = "control_gastos_pin";
 const PIN_UNLOCK_KEY = "control_gastos_pin_unlocked";
+const CATEGORY_COLORS = {
+  Pasajes: "#ef4444",    // rojo
+  Agua: "#eab308",       // amarillo
+  Material: "#22c55e",   // verde
+  Herramienta: "#06b6d4",
+  Ropa: "#6366f1",
+  Comida: "#f97316",
+  Otros: "#a855f7",
+  Internet: "#f00202"
+};
+
 
 function getSavedPin() {
   return localStorage.getItem(PIN_KEY); // string o null
@@ -1162,8 +1173,9 @@ function drawDonut(canvasId, dataMap) {
     const angle = (value / total) * (Math.PI * 2);
     const endAngle = startAngle + angle;
 
-    const hue = (i * 60) % 360;
-    ctx.fillStyle = `hsla(${hue}, 80%, 60%, 0.9)`;
+    const color = CATEGORY_COLORS[label] || "#64748b";
+    ctx.fillStyle = color;
+
 
     ctx.beginPath();
     ctx.moveTo(cx, cy);
@@ -1243,8 +1255,8 @@ function renderReportes() {
 
       entries.forEach(([cat, val], i) => {
         const pct = (val / total) * 100;
-        const hue = (i * 60) % 360;
-        const color = `hsla(${hue}, 80%, 60%, 0.9)`;
+        const color = CATEGORY_COLORS[cat] || "#64748b";
+
 
         const row = document.createElement("div");
         row.className = "legendItem";
