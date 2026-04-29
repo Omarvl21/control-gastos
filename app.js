@@ -1290,3 +1290,20 @@ if (!isUnlocked()) {
 
 renderAll();
 
+/*bloqueo de pantalla*/
+let lockTimer;
+function resetAutoLock(){
+  clearTimeout(lockTimer);
+  lockTimer = setTimeout(lockApp, 3 * 60 * 1000); // 3 minutos
+}
+["click","touchstart","keydown"].forEach(e =>
+  document.addEventListener(e, resetAutoLock)
+);
+
+/*footer*/
+document.getElementById("footerFecha").textContent =
+new Date().toLocaleDateString("es-MX",{
+  day:"2-digit",
+  month:"long",
+  year:"numeric"
+});
