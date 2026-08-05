@@ -153,6 +153,19 @@ function load() {
     parsed.tarjetas = parsed.tarjetas || [];
     parsed.deudas = parsed.deudas || [];
     parsed.cuts = parsed.cuts || [];
+    parsed.cuts.forEach(cut => {
+      cut.planQuincenal = cut.planQuincenal || {};
+      ["personal", "negocio"].forEach(scope => {
+        cut.planQuincenal[scope] = {
+          pasajes: 0, comida: 0, deudas: 0, ahorro: 0, inversion: 0,
+          real: { pasajes: 0, comida: 0, deudas: 0, ahorro: 0, inversion: 0 },
+          extras: [],
+          ...(cut.planQuincenal[scope] || {})
+        };
+        cut.planQuincenal[scope].real = { pasajes: 0, comida: 0, deudas: 0, ahorro: 0, inversion: 0, ...(cut.planQuincenal[scope].real || {}) };
+        cut.planQuincenal[scope].extras = Array.isArray(cut.planQuincenal[scope].extras) ? cut.planQuincenal[scope].extras : [];
+      });
+    });
     parsed.activeScope = parsed.activeScope || "personal";
 
     parsed.tarjetas.forEach(t => { if (t.usado == null) t.usado = 0; });
@@ -202,6 +215,10 @@ function createCut() {
     endISO: period.endISO,
     personal: { movimientos: [] },
     negocio: { movimientos: [] },
+    planQuincenal: {
+      personal: { pasajes: 0, comida: 0, deudas: 0, ahorro: 0, inversion: 0, real: { pasajes: 0, comida: 0, deudas: 0, ahorro: 0, inversion: 0 }, extras: [] },
+      negocio: { pasajes: 0, comida: 0, deudas: 0, ahorro: 0, inversion: 0, real: { pasajes: 0, comida: 0, deudas: 0, ahorro: 0, inversion: 0 }, extras: [] },
+    },
   };
 
   // Apoyo a mamá automático (si existe presupuesto > 0)
@@ -289,6 +306,69 @@ function gastoPorCategoria(cat) {
 
 function getPresupuesto(cat) {
   return Number(state.presupuestos?.[getScope()]?.[cat] || 0);
+}
+
+function getPlanQuincenal() {
+  const cut = activeCut();
+  cut.planQuincenal = cut.planQuincenal || {};
+  const actual = cut.planQuincenal[getScope()] || {};
+  cut.planQuincenal[getScope()] = {
+    pasajes: 0, comida: 0, deudas: 0, ahorro: 0, inversion: 0,
+    real: { pasajes: 0, comida: 0, deudas: 0, ahorro: 0, inversion: 0 }, extras: [], ...actual
+  };
+  const plan = cut.planQuincenal[getScope()];
+  plan.real = { pasajes: 0, comida: 0, deudas: 0, ahorro: 0, inversion: 0, ...(plan.real || {}) };
+  plan.extras = Array.isArray(plan.extras) ? plan.extras : [];
+  return plan;
+}
+
+function deudaSugerida() {
+  return deudasScope().reduce((total, deuda) => total + Math.min(Number(deuda.pendiente ?? deuda.total ?? 0), Number(deuda.pago || 0)), 0);
+}
+
+function planTotal(plan) {
+  return [plan.pasajes, plan.comida, plan.deudas, plan.ahorro, plan.inversion].reduce((total, valor) => total + Number(valor || 0), 0)
+    + plan.extras.reduce((total, item) => total + Number(item.estimado || 0), 0);
+}
+
+function renderPlanQuincenal() {
+  const plan = getPlanQuincenal();
+  const disponible = saldoPeriodoCuentas();
+  const campos = { planPasajes: plan.pasajes, planPasajesReal: plan.real.pasajes, planComida: plan.comida, planComidaReal: plan.real.comida, planDeudas: plan.deudas, planDeudasReal: plan.real.deudas, planAhorro: plan.ahorro, planAhorroReal: plan.real.ahorro, planInversion: plan.inversion, planInversionReal: plan.real.inversion };
+  Object.entries(campos).forEach(([id, valor]) => { if (document.activeElement !== $(id)) $(id).value = Number(valor || 0) || ""; });
+  const estimado = planTotal(plan);
+  const restante = disponible - estimado;
+  $("planDisponible").textContent = money(disponible);
+  $("planEstimadoTotal").textContent = money(estimado);
+  $("planRestante").textContent = money(restante);
+  $("planRestante").className = restante < 0 ? "red" : "green";
+  $("planDeudaSugerida").textContent = `Pago sugerido de tus deudas: ${money(deudaSugerida())}`;
+
+  const extras = $("planExtras");
+  extras.innerHTML = "";
+  plan.extras.forEach(item => {
+    const row = document.createElement("div");
+    row.className = "planRow planExtra";
+    row.innerHTML = `<input data-extra-nombre="${item.id}" value="${item.nombre}" aria-label="Concepto"><input data-extra-est="${item.id}" type="number" min="0" value="${Number(item.estimado || 0) || ""}" placeholder="Estimado"><input data-extra-real="${item.id}" type="number" min="0" value="${Number(item.real || 0) || ""}" placeholder="Real"><button class="btn" type="button" data-extra-del="${item.id}">Eliminar</button>`;
+    extras.appendChild(row);
+  });
+  extras.querySelectorAll("[data-extra-del]").forEach(btn => btn.onclick = () => {
+    plan.extras = plan.extras.filter(item => item.id !== btn.dataset.extraDel); save(); renderAll();
+  });
+
+  const resumen = $("planResumen");
+  const filas = [["Pasajes", plan.pasajes, plan.real.pasajes], ["Comidas", plan.comida, plan.real.comida], ["Deudas", plan.deudas, plan.real.deudas], ["Ahorro", plan.ahorro, plan.real.ahorro], ["Inversión", plan.inversion, plan.real.inversion], ...plan.extras.map(item => [item.nombre, item.estimado, item.real])];
+  resumen.innerHTML = "";
+  filas.forEach(([nombre, estimadoItem, real]) => {
+    const diferencia = Number(estimadoItem || 0) - Number(real || 0);
+    const item = document.createElement("div");
+    item.className = "item";
+    item.innerHTML = `<div><b>${nombre}</b><br><small class="muted">Estimado: ${money(estimadoItem)} · Real: ${money(real)}</small></div><span class="tag ${diferencia < 0 ? "red" : ""}">${diferencia < 0 ? "Excedido" : "Disponible"} ${money(Math.abs(diferencia))}</span>`;
+    resumen.appendChild(item);
+  });
+  const consejo = $("planConsejo");
+  consejo.textContent = restante < 0 ? `Tu plan supera el saldo por ${money(Math.abs(restante))}. Ajusta los montos antes de comprometer ese dinero.` : `Tienes ${money(restante)} sin asignar. Puedes dejarlo como fondo de emergencia, adelantar deuda o invertirlo.`;
+  consejo.className = restante < 0 ? "planAdvice danger" : "planAdvice";
 }
 
 // ===== UI NAV =====
@@ -715,6 +795,7 @@ function renderAll() {
   renderPagarTarjetaSelects();
 
   renderDashboard();
+  renderPlanQuincenal();
   renderMovimientos($("searchMov").value || "");
   renderTarjetas();
   renderDeudas();
@@ -1306,4 +1387,54 @@ new Date().toLocaleDateString("es-MX",{
   day:"2-digit",
   month:"long",
   year:"numeric"
+});
+
+$("formPlan").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const plan = getPlanQuincenal();
+  const valores = { pasajes: "planPasajes", comida: "planComida", deudas: "planDeudas", ahorro: "planAhorro", inversion: "planInversion" };
+  Object.entries(valores).forEach(([campo, id]) => {
+    plan[campo] = Math.max(0, Number($(id).value || 0));
+    plan.real[campo] = Math.max(0, Number($(`${id}Real`).value || 0));
+  });
+  $("planExtras").querySelectorAll("[data-extra-nombre]").forEach(input => {
+    const item = plan.extras.find(extra => extra.id === input.dataset.extraNombre);
+    if (item) item.nombre = input.value.trim() || item.nombre;
+  });
+  $("planExtras").querySelectorAll("[data-extra-est]").forEach(input => {
+    const item = plan.extras.find(extra => extra.id === input.dataset.extraEst);
+    if (item) item.estimado = Math.max(0, Number(input.value || 0));
+  });
+  $("planExtras").querySelectorAll("[data-extra-real]").forEach(input => {
+    const item = plan.extras.find(extra => extra.id === input.dataset.extraReal);
+    if (item) item.real = Math.max(0, Number(input.value || 0));
+  });
+  const disponible = saldoPeriodoCuentas();
+  if (planTotal(plan) > disponible && !confirm(`El plan excede tu saldo por ${money(planTotal(plan) - disponible)}. ¿Deseas guardarlo?`)) return;
+  save(); renderAll();
+});
+
+$("btnAgregarPlan").addEventListener("click", () => {
+  const nombre = $("planNuevoNombre").value.trim();
+  if (!nombre) return alert("Escribe el nombre del nuevo concepto.");
+  getPlanQuincenal().extras.push({ id: uid(), nombre, estimado: Math.max(0, Number($("planNuevoEstimado").value || 0)), real: Math.max(0, Number($("planNuevoReal").value || 0)) });
+  save(); $("planNuevoNombre").value = ""; $("planNuevoEstimado").value = ""; $("planNuevoReal").value = ""; renderAll();
+});
+
+$("btnSugerirPlan").addEventListener("click", () => {
+  const plan = getPlanQuincenal();
+  const deudas = Number($("planDeudas").value || deudaSugerida());
+  const pasajes = Number($("planPasajes").value || plan.pasajes || 0);
+  const comidas = Number($("planComida").value || plan.comida || 0);
+  const libre = Math.max(0, saldoPeriodoCuentas() - pasajes - comidas - deudas);
+  $("planDeudas").value = deudas || "";
+  $("planAhorro").value = Math.round(libre * 0.6) || "";
+  $("planInversion").value = Math.round(libre * 0.4) || "";
+});
+
+$("btnLimpiarPlan").addEventListener("click", () => {
+  if (!confirm("¿Reiniciar el plan de esta quincena?")) return;
+  const plan = getPlanQuincenal();
+  ["pasajes", "comida", "deudas", "ahorro", "inversion"].forEach(campo => { plan[campo] = 0; plan.real[campo] = 0; });
+  plan.extras = []; save(); renderAll();
 });

@@ -34,6 +34,7 @@
 
   <nav class="tabs">
     <button class="tab active" data-tab="dashboard">📊 Dashboard</button>
+    <button class="tab" data-tab="plan">📅 Plan quincenal</button>
     <button class="tab" data-tab="movimientos">🧾 Movimientos</button>
     <button class="tab" data-tab="tarjetas">💳 Tarjetas</button>
     <button class="tab" data-tab="deudas">📌 Deudas</button>
@@ -79,6 +80,41 @@
           <button class="btn" id="btnQuickAdd">Agregar movimiento</button>
         </div>
         <div id="topGastos" class="list"></div>
+      </div>
+    </section>
+
+    <!-- PLAN QUINCENAL -->
+    <section class="view" id="plan">
+      <div class="card planHero">
+        <div>
+          <small class="muted">SALDO DISPONIBLE PARA ESTA QUINCENA</small>
+          <div class="big" id="planDisponible">$0</div>
+          <small class="muted">Planear no registra un gasto: el saldo sólo cambia cuando guardas el movimiento real.</small>
+        </div>
+        <div class="planStats">
+          <div><small>Estimado</small><b id="planEstimadoTotal">$0</b></div>
+          <div><small>Por asignar</small><b id="planRestante">$0</b></div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="cardHeader"><h3>Distribución de dinero</h3><button class="btn" type="button" id="btnSugerirPlan">Sugerir distribución</button></div>
+          <small class="muted">Edita los importes cuando lo necesites. “Real” se actualiza conforme gastes.</small>
+          <form id="formPlan" class="form">
+            <div class="planColumns"><span>Concepto</span><span>Estimado</span><span>Real</span></div>
+            <div class="planRow"><b>Pasajes</b><input id="planPasajes" type="number" min="0" placeholder="Estimado"/><input id="planPasajesReal" type="number" min="0" placeholder="Real"/></div>
+            <div class="planRow"><b>Comidas</b><input id="planComida" type="number" min="0" placeholder="Estimado"/><input id="planComidaReal" type="number" min="0" placeholder="Real"/></div>
+            <div class="planRow"><b>Deudas</b><input id="planDeudas" type="number" min="0" placeholder="Estimado"/><input id="planDeudasReal" type="number" min="0" placeholder="Real"/></div>
+            <small class="muted" id="planDeudaSugerida"></small>
+            <div class="planRow"><b>Ahorro</b><input id="planAhorro" type="number" min="0" placeholder="Estimado"/><input id="planAhorroReal" type="number" min="0" placeholder="Real"/></div>
+            <div class="planRow"><b>Inversión</b><input id="planInversion" type="number" min="0" placeholder="Estimado"/><input id="planInversionReal" type="number" min="0" placeholder="Real"/></div>
+            <div id="planExtras" class="list"></div>
+            <div class="planAdd"><input id="planNuevoNombre" type="text" placeholder="Nuevo concepto: renta, gasolina..."/><input id="planNuevoEstimado" type="number" min="0" placeholder="Estimado"/><input id="planNuevoReal" type="number" min="0" placeholder="Real"/><button class="btn" type="button" id="btnAgregarPlan">Agregar</button></div>
+            <div class="formActions"><button class="btn primary" type="submit">Guardar cambios</button><button class="btn" type="button" id="btnLimpiarPlan">Reiniciar plan</button></div>
+          </form>
+        </div>
+        <div class="card"><h3>Resumen del plan</h3><div id="planResumen" class="list"></div><div id="planConsejo" class="planAdvice"></div></div>
       </div>
     </section>
 
