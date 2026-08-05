@@ -34,6 +34,7 @@
 
   <nav class="tabs">
     <button class="tab active" data-tab="dashboard">📊 Dashboard</button>
+    <button class="tab" data-tab="plan">📅 Plan quincenal</button>
     <button class="tab" data-tab="movimientos">🧾 Movimientos</button>
     <button class="tab" data-tab="tarjetas">💳 Tarjetas</button>
     <button class="tab" data-tab="deudas">📌 Deudas</button>
@@ -79,6 +80,50 @@
           <button class="btn" id="btnQuickAdd">Agregar movimiento</button>
         </div>
         <div id="topGastos" class="list"></div>
+      </div>
+    </section>
+
+    <!-- PLAN QUINCENAL -->
+    <section class="view" id="plan">
+      <div class="card planHero">
+        <div>
+          <span class="eyebrow">DINERO DISPONIBLE PARA ORGANIZAR</span>
+          <div class="big" id="planDisponible">$0</div>
+          <small class="muted">Es el saldo actual de tus cuentas. Las cantidades de abajo se apartan en tu plan, pero no se registran como gasto hasta que hagas el movimiento.</small>
+        </div>
+        <div class="planHeroStats">
+          <div><small>Planeado</small><b id="planAsignado">$0</b></div>
+          <div><small>Por asignar</small><b id="planRestante">$0</b></div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="cardHeader">
+            <div>
+              <h3>Distribución de esta quincena</h3>
+              <small class="muted">Prioriza lo indispensable, después ahorro e inversión.</small>
+            </div>
+            <button type="button" class="btn" id="btnSugerirPlan">Sugerir distribución</button>
+          </div>
+          <form id="formPlan" class="form">
+            <div class="planColumns"><span>Concepto</span><span>Estimado</span><span>Real</span></div>
+            <div class="planInputRow"><b>Pasajes</b><input id="planPasajes" type="number" min="0" step="1" placeholder="Estimado" /><input id="planPasajesReal" type="number" min="0" step="1" placeholder="Real" /></div>
+            <div class="planInputRow"><b>Comidas</b><input id="planComida" type="number" min="0" step="1" placeholder="Estimado" /><input id="planComidaReal" type="number" min="0" step="1" placeholder="Real" /></div>
+            <div class="planInputRow"><b>Deudas</b><input id="planDeudas" type="number" min="0" step="1" placeholder="Estimado" /><input id="planDeudasReal" type="number" min="0" step="1" placeholder="Real" /></div>
+            <small class="muted" id="planDeudaSugerida"></small>
+            <div class="planInputRow"><b>Ahorro</b><input id="planAhorro" type="number" min="0" step="1" placeholder="Estimado" /><input id="planAhorroReal" type="number" min="0" step="1" placeholder="Real" /></div>
+            <div class="planInputRow"><b>Inversión</b><input id="planInversion" type="number" min="0" step="1" placeholder="Estimado" /><input id="planInversionReal" type="number" min="0" step="1" placeholder="Real" /></div>
+            <div id="planExtras" class="planExtras"></div>
+            <div class="planInputRow planAddRow"><input id="nuevoPlanConcepto" type="text" placeholder="Nuevo concepto: renta, gasolina..." /><input id="nuevoPlanEstimado" type="number" min="0" placeholder="Estimado" /><input id="nuevoPlanReal" type="number" min="0" placeholder="Real" /><button type="button" class="btn" id="btnAgregarPlanItem">Agregar</button></div>
+            <div class="formActions"><button class="btn primary" type="submit">Guardar plan</button><button class="btn" type="button" id="btnLimpiarPlan">Reiniciar plan</button></div>
+          </form>
+        </div>
+        <div class="card">
+          <h3>Control de lo asignado</h3>
+          <div id="planResumen" class="list"></div>
+          <div class="planAdvice" id="planConsejo"></div>
+        </div>
       </div>
     </section>
 
@@ -250,6 +295,16 @@
               <input id="dDiaPago" type="number" placeholder="Ej: 10" />
             </div>
 
+            <div class="formRow">
+              <label>Fecha de pago real</label>
+              <input id="dFechaPago" type="date" />
+            </div>
+
+            <div class="formRow">
+              <label>Alertar días antes</label>
+              <input id="dAlertaDias" type="number" placeholder="Ej: 3" />
+            </div>
+
             <button class="btn primary" type="submit">Guardar deuda</button>
           </form>
         </div>
@@ -364,6 +419,32 @@
         <div id="listaPresupuestos" class="list"></div>
       </div>
 
+      <div class="card">
+        <h3>Metas de ahorro</h3>
+        <form id="formMeta" class="form">
+          <div class="formRow">
+            <label>Nombre de la meta</label>
+            <input id="metaNombre" type="text" placeholder="Ej: Fondo vacaciones" required />
+          </div>
+          <div class="formRow">
+            <label>Monto meta</label>
+            <input id="metaMonto" type="number" placeholder="Ej: 15000" required />
+          </div>
+          <div class="formRow">
+            <label>Fecha objetivo</label>
+            <input id="metaFecha" type="date" />
+          </div>
+          <button class="btn primary" type="submit">Guardar meta</button>
+        </form>
+        <div id="listaMetas" class="list"></div>
+      </div>
+
+      <div class="card">
+        <h3>Recordatorios</h3>
+        <small class="muted">Se mostrarán alertas cuando se acerquen las fechas.</small>
+        <div id="listaRecordatorios" class="list"></div>
+      </div>
+
       <div class="card danger">
         <h3>Reset</h3>
         <small class="muted">Borra todo el historial de tu dispositivo.</small>
@@ -381,6 +462,15 @@
           <option value="semana">Semanal</option>
           <option value="quincena" selected>Quincenal</option>
           <option value="mes">Mensual</option>
+        </select>
+      </div>
+
+      <div class="formRow">
+        <label>Vista</label>
+        <select id="repVista" class="select">
+          <option value="dia" selected>Por día</option>
+          <option value="semana">Por semana</option>
+          <option value="mes">Por mes</option>
         </select>
       </div>
 
@@ -402,6 +492,19 @@
       <div class="card" style="margin-top:12px;">
         <h3>Top categorías</h3>
         <div id="repTopCats" class="list"></div>
+      </div>
+
+      <div class="card" style="margin-top:12px;">
+        <h3>Movimientos detallados</h3>
+        <div id="repDetalle" class="list"></div>
+      </div>
+
+      <div class="card" style="margin-top:12px;">
+        <div class="cardHeader">
+          <div><h3>Estado de resultados mensual</h3><small class="muted">Resume los ingresos, gastos y resultado del mes en curso.</small></div>
+          <button class="btn primary" id="btnEstadoResultados" type="button">Generar</button>
+        </div>
+        <div id="estadoResultados" class="list"></div>
       </div>
     </div>
 
@@ -448,44 +551,7 @@
   </div>
 </div>
 
-<!-- FOOTER PREMIUM -->
-<footer class="footer-premium">
-  <div class="footer-wave"></div>
-
-  <div class="footer-container">
-
-    <div class="footer-brand">
-      <div class="footer-logo">💰</div>
-      <div>
-        <h3>Control de Gastos</h3>
-        <p>Administra tu dinero personal y negocio de forma inteligente.</p>
-      </div>
-    </div>
-
-    <div class="footer-info">
-      <div class="footer-box">
-        <span>📅 Fecha</span>
-        <strong id="footerFecha"></strong>
-      </div>
-
-      <div class="footer-box">
-        <span>👤 Usuario</span>
-        <strong>Prueba</strong>
-      </div>
-
-      <div class="footer-box">
-        <span>📊 Estado</span>
-        <strong>Activo</strong>
-      </div>
-    </div>
-
-    <div class="footer-copy">
-      © 2026 Control de Gastos | Todos los derechos reservados
-    </div>
-
-  </div>
-</footer>
-
+  <script src="cut-utils.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

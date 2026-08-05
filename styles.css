@@ -126,6 +126,29 @@ body{
   gap:10px;
 }
 
+.planHero{
+  display:flex;
+  justify-content:space-between;
+  gap:20px;
+  align-items:center;
+  margin-bottom:14px;
+  background:linear-gradient(135deg, rgba(37,99,235,.22), rgba(34,197,94,.12));
+}
+.eyebrow{display:block;font-size:11px;letter-spacing:.08em;color:#93c5fd;font-weight:800}
+.planHeroStats{display:grid;grid-template-columns:repeat(2, minmax(115px, 1fr));gap:10px;min-width:250px}
+.planHeroStats div{padding:10px;border:1px solid var(--stroke);border-radius:14px;background:rgba(0,0,0,.16)}
+.planHeroStats small{display:block;color:var(--muted);margin-bottom:4px}
+.planAdvice{margin-top:14px;padding:12px;border-radius:14px;background:rgba(34,197,94,.10);border:1px solid rgba(34,197,94,.22);color:#bbf7d0;font-size:14px;line-height:1.45}
+.planAdvice.danger{background:rgba(239,68,68,.10);border-color:rgba(239,68,68,.28);color:#fecaca}
+.planColumns,.planInputRow{display:grid;grid-template-columns:minmax(120px,1.5fr) minmax(90px,1fr) minmax(90px,1fr);gap:8px;align-items:center}
+.planColumns{padding:4px 2px;color:var(--muted);font-size:12px}
+.planInputRow{padding:9px;border:1px solid var(--stroke);border-radius:14px;background:rgba(255,255,255,.035)}
+.planInputRow input{min-width:0;padding:10px}
+.planExtras{display:flex;flex-direction:column;gap:8px}
+.planAddRow{grid-template-columns:minmax(145px,1.5fr) minmax(75px,1fr) minmax(75px,1fr) auto}
+.planExtraRow{grid-template-columns:minmax(120px,1.5fr) minmax(90px,1fr) minmax(90px,1fr) auto}
+.estadoFinal{background:rgba(37,99,235,.16);border-color:rgba(96,165,250,.35)}
+
 .big{
   font-size:28px;
   font-weight:900;
@@ -231,6 +254,20 @@ input, select{
 .card.danger{
   border:1px solid rgba(255,90,90,.25);
 }
+
+.progressBar{
+  margin-top:8px;
+  height:8px;
+  border-radius:999px;
+  background: rgba(255,255,255,.12);
+  overflow:hidden;
+}
+.progressFill{
+  height:100%;
+  background: linear-gradient(90deg, #22c55e, #38bdf8);
+}
+.warning{ color:#fbbf24; }
+.danger{ color:#f87171; }
 
 /* === Tarjetas físicas === */
 .cardsWrap{
@@ -573,6 +610,13 @@ input, select, textarea{
     font-size: 24px;
   }
 
+  .planHero{align-items:stretch; flex-direction:column;}
+  .planHeroStats{min-width:0;}
+  .planColumns,.planInputRow{grid-template-columns:1fr 1fr;}
+  .planColumns span:first-child,.planInputRow b{grid-column:1 / -1;}
+  .planAddRow{grid-template-columns:1fr 1fr;}
+  .planAddRow input:first-child,.planAddRow .btn{grid-column:1 / -1;}
+
   /* Stats en 1 o 2 columnas */
   .rowStats{
     grid-template-columns: 1fr;
@@ -726,4 +770,155 @@ input, select, textarea{
   border-top:1px solid rgba(255,255,255,.08);
   color:#94a3b8;
   font-size:13px;
+}
+
+/* === Actualización visual profesional === */
+:root{
+  --bg:#07111f;
+  --card:#101d2e;
+  --text:#edf4ff;
+  --muted:#9caec4;
+  --stroke:rgba(148,163,184,.16);
+  --shadow:0 18px 48px rgba(0,0,0,.22);
+  --radius:18px;
+  --accent:#3b82f6;
+  --success:#34d399;
+  --danger:#fb7185;
+}
+
+body{
+  min-height:100vh;
+  background:
+    radial-gradient(ellipse 70% 45% at 4% -8%, rgba(37,99,235,.25), transparent 65%),
+    radial-gradient(ellipse 50% 35% at 98% 4%, rgba(20,184,166,.15), transparent 65%),
+    linear-gradient(180deg, #081321 0%, #07111f 54%, #0a1524 100%);
+  letter-spacing:.01em;
+}
+
+.topbar{
+  padding:16px clamp(16px, 4vw, 42px);
+  background:rgba(7,17,31,.83);
+  border-bottom-color:rgba(148,163,184,.14);
+  box-shadow:0 8px 24px rgba(0,0,0,.12);
+}
+.logo{
+  width:46px;height:46px;border-radius:15px;
+  background:linear-gradient(135deg, #3b82f6, #2563eb 62%, #1d4ed8);
+  border:1px solid rgba(147,197,253,.55);
+  box-shadow:0 10px 22px rgba(37,99,235,.28);
+}
+.title{font-size:16px;letter-spacing:.01em}
+.subtitle{margin-top:2px;color:#91a4bd}
+.topActions{gap:8px}
+
+.tabs{
+  padding:10px clamp(16px, 4vw, 42px);
+  gap:6px;
+  background:rgba(7,17,31,.52);
+  border-bottom:1px solid rgba(148,163,184,.10);
+}
+.tab{
+  padding:9px 13px;
+  border:1px solid transparent;
+  border-radius:10px;
+  color:#aebed1;
+  background:transparent;
+  font-size:13px;
+  font-weight:650;
+}
+.tab:hover{background:rgba(148,163,184,.09);color:#f8fbff}
+.tab.active{
+  background:rgba(59,130,246,.16);
+  border-color:rgba(96,165,250,.28);
+  color:#dbeafe;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07);
+}
+
+.container{max-width:1220px;padding:28px 20px 36px}
+.grid2{gap:18px}
+.card{
+  padding:20px;
+  background:linear-gradient(145deg, rgba(20,35,55,.92), rgba(13,27,45,.88));
+  border-color:rgba(148,163,184,.14);
+  box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,.025);
+}
+.card:hover{border-color:rgba(148,163,184,.22)}
+h3{margin:0;font-size:15px;letter-spacing:.005em;color:#f4f8ff}
+.cardHeader{margin-bottom:2px}
+.big{font-size:32px;letter-spacing:-.035em}
+
+.rowStats{gap:9px}
+.stat{
+  padding:13px;
+  border-color:rgba(148,163,184,.13);
+  background:rgba(4,13,25,.28);
+}
+.stat small{display:block;margin-bottom:5px;color:#91a4bd}
+.stat b{font-size:15px}
+
+input, select{
+  border-radius:10px;
+  border-color:rgba(148,163,184,.22);
+  background:rgba(4,13,25,.46);
+  color:#f2f7ff;
+  transition:border-color .16s ease, box-shadow .16s ease, background .16s ease;
+}
+input::placeholder{color:#60728b}
+input:hover,select:hover{border-color:rgba(148,163,184,.38)}
+input:focus,select:focus{
+  border-color:#60a5fa;
+  background:rgba(6,18,34,.7);
+  box-shadow:0 0 0 3px rgba(59,130,246,.16);
+}
+label{font-weight:650;color:#9fb0c5;letter-spacing:.02em}
+.form{gap:13px;margin-top:15px}
+.formRow{gap:7px}
+
+.btn{
+  padding:10px 14px;
+  border:1px solid rgba(148,163,184,.16);
+  border-radius:10px;
+  background:rgba(148,163,184,.09);
+  color:#dce8f8;
+  font-size:13px;
+  font-weight:700;
+}
+.btn:hover{background:rgba(148,163,184,.16);border-color:rgba(148,163,184,.28)}
+.btn.primary{
+  background:linear-gradient(135deg, #3b82f6, #2563eb);
+  border-color:rgba(147,197,253,.45);
+  box-shadow:0 8px 18px rgba(37,99,235,.20);
+}
+.btn.primary:hover{background:linear-gradient(135deg, #60a5fa, #2563eb)}
+.btn.danger{background:rgba(244,63,94,.14);border-color:rgba(251,113,133,.28);color:#fecdd3}
+
+.item{
+  padding:13px 14px;
+  border-radius:12px;
+  border-color:rgba(148,163,184,.13);
+  background:rgba(4,13,25,.25);
+}
+.item:hover{background:rgba(30,48,72,.34)}
+.tag{
+  border-color:rgba(148,163,184,.17);
+  background:rgba(148,163,184,.08);
+  color:#bfcee0;
+  font-weight:650;
+}
+.planHero{padding:24px;background:linear-gradient(120deg, rgba(30,64,175,.34), rgba(15,118,110,.16));border-color:rgba(96,165,250,.25)}
+.planHeroStats div{background:rgba(3,12,25,.28);border-color:rgba(148,163,184,.18)}
+.planInputRow{background:rgba(4,13,25,.22);border-color:rgba(148,163,184,.14)}
+.planInputRow:hover{border-color:rgba(96,165,250,.28)}
+.planAdvice{border-radius:12px}
+
+.creditCard{border-color:rgba(148,163,184,.16);background:linear-gradient(145deg, #183052, #12233c)}
+.progressBar{background:rgba(148,163,184,.16)}
+.footer-premium{margin-top:28px;background:linear-gradient(135deg,#081321,#10233b,#122a49)}
+
+@media (max-width:600px){
+  .container{padding:18px 12px 28px}
+  .topbar{padding:13px 12px}
+  .tabs{padding:8px 12px}
+  .card{padding:16px}
+  .big{font-size:28px}
 }

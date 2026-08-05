@@ -2,6 +2,7 @@ const KEY = "control_gastos_full_v1";
 // ===== PIN =====
 const PIN_KEY = "control_gastos_pin";
 const PIN_UNLOCK_KEY = "control_gastos_pin_unlocked";
+const REMINDER_ALERT_KEY = "control_gastos_reminder_alert";
 const CATEGORY_COLORS = {
   Pasajes: "#ef4444",    // rojo
   Agua: "#eab308",       // amarillo
@@ -125,7 +126,7 @@ function defaultData() {
     categorias: [
       "Agua", "Luz", "Internet", "Pasajes", "Comida",
       "Entretenimiento", "Cine", "Ropa", "Apoyo a mamá",
-      "Material", "Herramienta", "Pago deuda", "Otros", "Venta"
+      "Material", "Herramienta", "Pago deuda", "Ahorro", "Inversión", "Otros", "Venta"
     ],
     presupuestos: { personal: {}, negocio: {} },
     autoGastos: { personal: { apoyoMamaActivo: true, apoyoMamaMonto: 0 } },
@@ -137,6 +138,8 @@ function defaultData() {
     ],
     tarjetas: [],
     deudas: [],
+    recordatorios: [],
+    metas: [],
   };
 }
 
@@ -149,10 +152,24 @@ function load() {
     parsed.presupuestos = parsed.presupuestos || { personal: {}, negocio: {} };
     parsed.autoGastos = parsed.autoGastos || { personal: { apoyoMamaActivo: true, apoyoMamaMonto: 0 } };
     parsed.categorias = parsed.categorias || defaultData().categorias;
+    ["Ahorro", "Inversión"].forEach(categoria => {
+      if (!parsed.categorias.includes(categoria)) parsed.categorias.push(categoria);
+    });
     parsed.cuentas = parsed.cuentas || defaultData().cuentas;
     parsed.tarjetas = parsed.tarjetas || [];
     parsed.deudas = parsed.deudas || [];
+    parsed.recordatorios = parsed.recordatorios || [];
+    parsed.metas = parsed.metas || [];
     parsed.cuts = parsed.cuts || [];
+    parsed.cuts.forEach(cut => {
+      cut.planQuincenal = cut.planQuincenal || {};
+      ["personal", "negocio"].forEach(scope => {
+        cut.planQuincenal[scope] = {
+          pasajes: 0, comida: 0, deudas: 0, ahorro: 0, inversion: 0,
+          ...(cut.planQuincenal[scope] || {})
+        };
+      });
+    });
     parsed.activeScope = parsed.activeScope || "personal";
 
     parsed.tarjetas.forEach(t => { if (t.usado == null) t.usado = 0; });
@@ -191,20 +208,37 @@ function getQuincenaPeriod(date = new Date()) {
   };
 }
 
-function createCut() {
-  const now = new Date();
-  const period = getQuincenaPeriod(now);
+function getPeriodKey(period) {
+  return `${period.startISO}|${period.endISO}`;
+}
+
+function getCutKey(cut) {
+  return `${cut.startISO}|${cut.endISO}`;
+}
+
+function createCut(date = new Date(), period = getQuincenaPeriod(date)) {
+  const currentKey = getPeriodKey(period);
+  const existing = state.cuts.find(c => getCutKey(c) === currentKey);
+
+  if (existing) {
+    state.activeCutId = existing.id;
+    save();
+    return existing;
+  }
 
   const cut = {
     id: uid(),
-    createdAt: now.toISOString(),
+    createdAt: date.toISOString(),
     startISO: period.startISO,
     endISO: period.endISO,
     personal: { movimientos: [] },
     negocio: { movimientos: [] },
+    planQuincenal: {
+      personal: { pasajes: 0, comida: 0, deudas: 0, ahorro: 0, inversion: 0 },
+      negocio: { pasajes: 0, comida: 0, deudas: 0, ahorro: 0, inversion: 0 },
+    },
   };
 
-  // Apoyo a mamá automático (si existe presupuesto > 0)
   const apoyo = Number(state.autoGastos?.personal?.apoyoMamaMonto || 0);
   if (apoyo > 0) {
     const cuentaPersonal = state.cuentas.find(c => c.scope === "personal")?.id || "";
@@ -225,9 +259,22 @@ function createCut() {
   state.cuts.unshift(cut);
   state.activeCutId = cut.id;
   save();
+  return cut;
 }
 
-if (!state.activeCutId || state.cuts.length === 0) createCut();
+function ensureCurrentCut() {
+  const now = new Date();
+  const period = getQuincenaPeriod(now);
+  const current = state.cuts.find(c => getCutKey(c) === getPeriodKey(period));
+  if (current) {
+    state.activeCutId = current.id;
+    save();
+    return current;
+  }
+  return createCut(now, period);
+}
+
+ensureCurrentCut();
 
 // ===== HELPERS =====
 function activeCut() {
@@ -289,6 +336,101 @@ function gastoPorCategoria(cat) {
 
 function getPresupuesto(cat) {
   return Number(state.presupuestos?.[getScope()]?.[cat] || 0);
+}
+
+function getPlanQuincenal() {
+  const cut = activeCut();
+  cut.planQuincenal = cut.planQuincenal || {};
+  cut.planQuincenal[getScope()] = {
+    pasajes: 0, comida: 0, deudas: 0, ahorro: 0, inversion: 0,
+    ...(cut.planQuincenal[getScope()] || {})
+  };
+  const plan = cut.planQuincenal[getScope()];
+  plan.real = { pasajes: 0, comida: 0, deudas: 0, ahorro: 0, inversion: 0, ...(plan.real || {}) };
+  plan.extras = Array.isArray(plan.extras) ? plan.extras : [];
+  return plan;
+}
+
+function deudaSugeridaQuincenal() {
+  return deudasScope().reduce((total, deuda) => {
+    const pendiente = Number(deuda.pendiente ?? deuda.total ?? 0);
+    return total + Math.min(pendiente, Number(deuda.pago || 0));
+  }, 0);
+}
+
+function renderPlanQuincenal() {
+  const plan = getPlanQuincenal();
+  const disponible = saldoPeriodoCuentas();
+  const campos = {
+    planPasajes: plan.pasajes,
+    planPasajesReal: plan.real.pasajes,
+    planComida: plan.comida,
+    planComidaReal: plan.real.comida,
+    planDeudas: plan.deudas,
+    planDeudasReal: plan.real.deudas,
+    planAhorro: plan.ahorro,
+    planAhorroReal: plan.real.ahorro,
+    planInversion: plan.inversion,
+    planInversionReal: plan.real.inversion,
+  };
+
+  Object.entries(campos).forEach(([id, valor]) => {
+    const input = $(id);
+    if (input && document.activeElement !== input) input.value = Number(valor || 0) || "";
+  });
+
+  const asignado = [plan.pasajes, plan.comida, plan.deudas, plan.ahorro, plan.inversion]
+    .reduce((total, valor) => total + Number(valor || 0), 0)
+    + plan.extras.reduce((total, item) => total + Number(item.estimado || 0), 0);
+  const restante = disponible - asignado;
+  $("planDisponible").textContent = money(disponible);
+  $("planAsignado").textContent = money(asignado);
+  $("planRestante").textContent = money(restante);
+  $("planRestante").className = restante < 0 ? "red" : "green";
+  $("planDeudaSugerida").textContent = `Pago sugerido según tus deudas: ${money(deudaSugeridaQuincenal())}`;
+
+  const resumen = $("planResumen");
+  const filas = [
+    ["Pasajes", plan.pasajes, plan.real.pasajes],
+    ["Comidas", plan.comida, plan.real.comida],
+    ["Deudas", plan.deudas, plan.real.deudas],
+    ["Ahorro", plan.ahorro, plan.real.ahorro],
+    ["Inversión", plan.inversion, plan.real.inversion],
+    ...plan.extras.map(item => [item.nombre, item.estimado, item.real]),
+  ];
+  resumen.innerHTML = "";
+  filas.forEach(([nombre, reservado, gastado]) => {
+    const falta = Number(reservado || 0) - Number(gastado || 0);
+    const div = document.createElement("div");
+    div.className = "item planItem";
+    div.innerHTML = `<div><b>${nombre}</b><br><small class="muted">Estimado: ${money(reservado)} · Real: ${money(gastado)}</small></div><span class="tag ${falta < 0 ? "red" : ""}">${falta < 0 ? "Excedido " : "Diferencia "}${money(Math.abs(falta))}</span>`;
+    resumen.appendChild(div);
+  });
+
+  const extras = $("planExtras");
+  extras.innerHTML = "";
+  plan.extras.forEach(item => {
+    const row = document.createElement("div");
+    row.className = "planInputRow planExtraRow";
+    row.innerHTML = `<b>${item.nombre}</b><input type="number" min="0" step="1" data-extra-est="${item.id}" value="${Number(item.estimado || 0) || ""}" placeholder="Estimado"><input type="number" min="0" step="1" data-extra-real="${item.id}" value="${Number(item.real || 0) || ""}" placeholder="Real"><button type="button" class="btn" data-extra-del="${item.id}">Eliminar</button>`;
+    extras.appendChild(row);
+  });
+  extras.querySelectorAll("[data-extra-del]").forEach(btn => btn.onclick = () => {
+    plan.extras = plan.extras.filter(item => item.id !== btn.dataset.extraDel);
+    save(); renderAll();
+  });
+
+  const consejo = $("planConsejo");
+  if (restante < 0) {
+    consejo.textContent = `Tu plan supera el saldo por ${money(Math.abs(restante))}. Reduce primero ahorro, inversión o gastos no urgentes.`;
+    consejo.className = "planAdvice danger";
+  } else if (restante > 0) {
+    consejo.textContent = `Aún tienes ${money(restante)} sin destino. Puedes dejarlo como colchón, adelantar una deuda o reforzar ahorro.`;
+    consejo.className = "planAdvice";
+  } else {
+    consejo.textContent = "Todo tu saldo quedó asignado. Registra cada pago o compra para mantener el control real.";
+    consejo.className = "planAdvice";
+  }
 }
 
 // ===== UI NAV =====
@@ -706,6 +848,7 @@ function renderDeudas() {
 function renderAll() {
   $("scopeSelect").value = getScope();
 
+  ensureCurrentCut();
   renderPeriod();
   renderCategorias();
   renderPresupuestos();
@@ -715,11 +858,15 @@ function renderAll() {
   renderPagarTarjetaSelects();
 
   renderDashboard();
+  renderPlanQuincenal();
   renderMovimientos($("searchMov").value || "");
   renderTarjetas();
   renderDeudas();
+  renderRecordatorios();
+  renderMetas();
   renderReportes();
-
+  renderEstadoResultados();
+  checkReminderAlerts();
 }
 
 // ===== EVENTS =====
@@ -730,7 +877,7 @@ $("scopeSelect").addEventListener("change", (e) => {
 });
 
 $("btnNewCut").addEventListener("click", () => {
-  if (!confirm("¿Crear nuevo corte quincenal?")) return;
+  if (!confirm("¿Crear o activar un nuevo corte quincenal?")) return;
   createCut();
   renderAll();
 });
@@ -760,6 +907,10 @@ $("pdFecha").value = todayISO();
 $("ptFecha").value = todayISO();
 
 $("repRango")?.addEventListener("change", () => {
+  renderReportes();
+});
+
+$("repVista")?.addEventListener("change", () => {
   renderReportes();
 });
 
@@ -955,8 +1106,7 @@ $("formDeuda").addEventListener("submit", (e) => {
   e.preventDefault();
 
   const total = Number($("dTotal").value || 0);
-
-  state.deudas.push({
+  const deuda = {
     id: uid(),
     scope: getScope(),
     nombre: $("dNombre").value.trim(),
@@ -964,14 +1114,20 @@ $("formDeuda").addEventListener("submit", (e) => {
     pendiente: total,
     pago: Number($("dPago").value || 0),
     diaPago: Number($("dDiaPago").value || 1),
-  });
+    fechaPago: $("dFechaPago").value || "",
+    alertaDias: Number($("dAlertaDias").value || 0),
+  };
 
+  state.deudas.push(deuda);
+  syncReminderFromDeuda(deuda);
   save();
 
   $("dNombre").value = "";
   $("dTotal").value = "";
   $("dPago").value = "";
   $("dDiaPago").value = "";
+  $("dFechaPago").value = "";
+  $("dAlertaDias").value = "";
 
   renderAll();
 });
@@ -1022,6 +1178,10 @@ $("formPagarDeuda").addEventListener("submit", (e) => {
 
   deuda.pendiente -= monto;
 
+  if (deuda.pendiente <= 0) {
+    state.recordatorios = state.recordatorios.filter(r => !(r.tipo === "deuda" && r.refId === deuda.id));
+  }
+
   save();
   $("pdMonto").value = "";
   renderAll();
@@ -1070,13 +1230,31 @@ $("formPresupuesto").addEventListener("submit", (e) => {
 
   state.presupuestos[getScope()][cat] = monto;
 
-  // Apoyo mamá automático
   if (getScope() === "personal" && cat === "Apoyo a mamá") {
     state.autoGastos.personal.apoyoMamaMonto = monto;
   }
 
   save();
   $("pMonto").value = "";
+  renderAll();
+});
+
+// Guardar meta
+$("formMeta").addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  state.metas.push({
+    id: uid(),
+    nombre: $("metaNombre").value.trim(),
+    montoMeta: Number($("metaMonto").value || 0),
+    montoAhorrado: 0,
+    fechaMeta: $("metaFecha").value || "",
+  });
+
+  save();
+  $("metaNombre").value = "";
+  $("metaMonto").value = "";
+  $("metaFecha").value = "";
   renderAll();
 });
 
@@ -1203,8 +1381,134 @@ function drawDonut(canvasId, dataMap) {
 }
 
 
+function renderRecordatorios() {
+  const list = $("listaRecordatorios");
+  list.innerHTML = "";
+
+  if (state.recordatorios.length === 0) {
+    list.innerHTML = `<div class="item"><small class="muted">No hay recordatorios asignados.</small></div>`;
+    return;
+  }
+
+  state.recordatorios.filter(r => !r.completado).forEach(reminder => {
+    const status = getReminderStatus(reminder);
+    const div = document.createElement("div");
+    div.className = "item";
+    div.innerHTML = `
+      <div>
+        <b>${reminder.nombre}</b><br/>
+        <small class="muted">Fecha: ${reminder.fecha || "—"} · Alerta: ${reminder.diasAlerta || 0} días antes</small>
+      </div>
+      <span class="tag ${status.tone === "danger" ? "danger" : status.tone === "warning" ? "warning" : ""}">${status.label}</span>
+    `;
+    list.appendChild(div);
+  });
+}
+
+function renderMetas() {
+  const list = $("listaMetas");
+  list.innerHTML = "";
+
+  if (state.metas.length === 0) {
+    list.innerHTML = `<div class="item"><small class="muted">No hay metas registradas.</small></div>`;
+    return;
+  }
+
+  state.metas.forEach(meta => {
+    const porcentaje = meta.montoMeta > 0 ? Math.min(100, (meta.montoAhorrado / meta.montoMeta) * 100) : 0;
+    const div = document.createElement("div");
+    div.className = "item";
+    div.innerHTML = `
+      <div style="flex:1">
+        <b>${meta.nombre}</b><br/>
+        <small class="muted">${money(meta.montoAhorrado)} de ${money(meta.montoMeta)} · Meta: ${meta.fechaMeta || "Sin fecha"}</small>
+        <div class="progressBar"><div class="progressFill" style="width:${porcentaje}%"></div></div>
+      </div>
+      <button class="btn" data-add="${meta.id}">Añadir</button>
+    `;
+    list.appendChild(div);
+  });
+
+  list.querySelectorAll("[data-add]").forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.getAttribute("data-add");
+      const meta = state.metas.find(m => m.id === id);
+      if (!meta) return;
+      const valor = Number(prompt(`¿Cuánto deseas agregar a ${meta.nombre}?`, "100"));
+      if (!Number.isFinite(valor) || valor <= 0) return;
+      meta.montoAhorrado += valor;
+      save();
+      renderAll();
+    };
+  });
+}
+
+function syncReminderFromDeuda(deuda) {
+  const existing = state.recordatorios.find(r => r.tipo === "deuda" && r.refId === deuda.id);
+  if (!deuda.fechaPago || !Number(deuda.alertaDias || 0)) {
+    state.recordatorios = state.recordatorios.filter(r => !(r.tipo === "deuda" && r.refId === deuda.id));
+    return;
+  }
+
+  const reminder = {
+    id: existing?.id || uid(),
+    tipo: "deuda",
+    refId: deuda.id,
+    nombre: `${deuda.nombre} · Pago`,
+    fecha: deuda.fechaPago,
+    diasAlerta: Number(deuda.alertaDias || 3),
+    completado: false,
+  };
+
+  if (existing) {
+    Object.assign(existing, reminder);
+  } else {
+    state.recordatorios.push(reminder);
+  }
+}
+
+function checkReminderAlerts() {
+  const today = new Date().toISOString().slice(0, 10);
+  const last = sessionStorage.getItem(REMINDER_ALERT_KEY);
+  if (last === today) return;
+
+  const proximos = state.recordatorios.filter(r => !r.completado && r.fecha).map(r => {
+    const diff = Math.ceil((new Date(`${r.fecha}T00:00:00`) - new Date(`${today}T00:00:00`)) / 86400000);
+    return { ...r, diff };
+  }).filter(r => r.diff <= Number(r.diasAlerta || 3));
+
+  if (proximos.length > 0) {
+    const texto = proximos.map(r => `• ${r.nombre}: ${r.diff < 0 ? "vencido" : `en ${r.diff} día(s)`}`).join("\n");
+    sessionStorage.setItem(REMINDER_ALERT_KEY, today);
+    alert(`🔔 Recordatorios próximos:\n${texto}`);
+  }
+}
+
+function renderEstadoResultados() {
+  const contenedor = $("estadoResultados");
+  if (!contenedor) return;
+
+  const movimientos = getMovimientosEnRango("mes");
+  const ingresos = movimientos.filter(m => m.tipo === "ingreso").reduce((total, m) => total + Number(m.monto || 0), 0);
+  const ahorro = movimientos.filter(m => m.tipo !== "ingreso" && m.categoria === "Ahorro").reduce((total, m) => total + Number(m.monto || 0), 0);
+  const inversion = movimientos.filter(m => m.tipo !== "ingreso" && m.categoria === "Inversión").reduce((total, m) => total + Number(m.monto || 0), 0);
+  const gastos = movimientos.filter(m => m.tipo !== "ingreso" && !["Ahorro", "Inversión"].includes(m.categoria)).reduce((total, m) => total + Number(m.monto || 0), 0);
+  const resultadoOperativo = ingresos - gastos;
+  const resultadoNeto = resultadoOperativo - ahorro - inversion;
+  const mes = new Date().toLocaleDateString("es-MX", { month: "long", year: "numeric" });
+
+  contenedor.innerHTML = `
+    <div class="item"><div><b>Periodo</b><br><small class="muted">${mes}</small></div><span class="tag">Mensual</span></div>
+    <div class="item"><b>Ingresos</b><b class="green">${money(ingresos)}</b></div>
+    <div class="item"><b>Gastos operativos</b><b class="red">-${money(gastos)}</b></div>
+    <div class="item"><b>Ahorro e inversión</b><b>-${money(ahorro + inversion)}</b></div>
+    <div class="item estadoFinal"><b>Resultado neto del mes</b><b class="${resultadoNeto < 0 ? "red" : "green"}">${money(resultadoNeto)}</b></div>
+  `;
+}
+
 function renderReportes() {
   const rango = $("repRango")?.value || "quincena";
+  const vista = $("repVista")?.value || "dia";
   const movs = getMovimientosEnRango(rango);
 
   const ingresos = movs.filter(m => m.tipo === "ingreso").reduce((a,m)=>a+Number(m.monto||0),0);
@@ -1219,7 +1523,6 @@ function renderReportes() {
     map[m.categoria] = (map[m.categoria] || 0) + Number(m.monto || 0);
   });
 
-  // top categorías
   const top = Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,8);
   const list = $("repTopCats");
   list.innerHTML = "";
@@ -1238,8 +1541,28 @@ function renderReportes() {
     });
   }
 
+  const detalle = buildPeriodSummary(movs, vista);
+  const detalleList = $("repDetalle");
+  detalleList.innerHTML = "";
+
+  if (detalle.length === 0) {
+    detalleList.innerHTML = `<div class="item"><small class="muted">Sin datos para esta vista.</small></div>`;
+  } else {
+    detalle.forEach(item => {
+      const div = document.createElement("div");
+      div.className = "item";
+      div.innerHTML = `
+        <div>
+          <b>${item.label}</b><br/>
+          <small class="muted">Ingresos: ${money(item.ingresos)} · Gastos: ${money(item.gastos)}</small>
+        </div>
+        <span class="tag">${money(item.gastos)}</span>
+      `;
+      detalleList.appendChild(div);
+    });
+  }
+
   drawDonut("repChart", map);
-    // ===== Leyenda por colores =====
   const legend = $("repLegend");
   if (legend) {
     legend.innerHTML = "";
@@ -1250,13 +1573,11 @@ function renderReportes() {
     if (entries.length === 0 || total <= 0) {
       legend.innerHTML = `<div class="item"><small class="muted">Sin gastos para mostrar.</small></div>`;
     } else {
-      // ordenado de mayor a menor
       entries.sort((a,b)=>b[1]-a[1]);
 
-      entries.forEach(([cat, val], i) => {
+      entries.forEach(([cat, val]) => {
         const pct = (val / total) * 100;
         const color = CATEGORY_COLORS[cat] || "#64748b";
-
 
         const row = document.createElement("div");
         row.className = "legendItem";
@@ -1276,8 +1597,6 @@ function renderReportes() {
       });
     }
   }
-
-
 }
 
 pinFlowText();
@@ -1300,10 +1619,156 @@ function resetAutoLock(){
   document.addEventListener(e, resetAutoLock)
 );
 
-/*footer*/
-document.getElementById("footerFecha").textContent =
-new Date().toLocaleDateString("es-MX",{
-  day:"2-digit",
-  month:"long",
-  year:"numeric"
+// ===============================
+// GUARDAR AUTOMÁTICO
+// ===============================
+function guardarLocal(){
+
+    const datos = {
+        raw: document.getElementById("inputData").value,
+        dieselInicial: document.getElementById("dieselInicial").value,
+        precios: preciosPorDia
+    };
+
+    localStorage.setItem(
+        "diesel_pro_backup",
+        JSON.stringify(datos)
+    );
+}
+
+// ===============================
+// CARGAR BACKUP
+// ===============================
+function cargarLocal(){
+
+    let backup = localStorage.getItem("diesel_pro_backup");
+
+    if(!backup) return;
+
+    let data = JSON.parse(backup);
+
+    document.getElementById("inputData").value =
+        data.raw || "";
+
+    document.getElementById("dieselInicial").value =
+        data.dieselInicial || "";
+
+    preciosPorDia = data.precios || {};
+}
+
+// ===============================
+// IMPRIMIR REPORTES
+// ===============================
+function imprimirReportes(){
+
+    showSection("reportes");
+
+    setTimeout(()=>{
+        window.print();
+    },500);
+}
+
+// ===============================
+// CAMBIAR PRECIOS
+// ===============================
+function resetPrecios(){
+
+    preciosPorDia = {};
+
+    renderReportes();
+
+    guardarLocal();
+}
+
+// ===============================
+// EVENTOS AUTO GUARDADO
+// ===============================
+document.addEventListener("DOMContentLoaded",()=>{
+
+    cargarLocal();
+
+    document.getElementById("inputData")
+    .addEventListener("input",guardarLocal);
+
+    document.getElementById("dieselInicial")
+    .addEventListener("input",guardarLocal);
+
+});
+
+$("formPlan").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const plan = getPlanQuincenal();
+  plan.pasajes = Math.max(0, Number($("planPasajes").value || 0));
+  plan.comida = Math.max(0, Number($("planComida").value || 0));
+  plan.deudas = Math.max(0, Number($("planDeudas").value || 0));
+  plan.ahorro = Math.max(0, Number($("planAhorro").value || 0));
+  plan.inversion = Math.max(0, Number($("planInversion").value || 0));
+  plan.real.pasajes = Math.max(0, Number($("planPasajesReal").value || 0));
+  plan.real.comida = Math.max(0, Number($("planComidaReal").value || 0));
+  plan.real.deudas = Math.max(0, Number($("planDeudasReal").value || 0));
+  plan.real.ahorro = Math.max(0, Number($("planAhorroReal").value || 0));
+  plan.real.inversion = Math.max(0, Number($("planInversionReal").value || 0));
+  $("planExtras").querySelectorAll("[data-extra-est]").forEach(input => {
+    const item = plan.extras.find(extra => extra.id === input.dataset.extraEst);
+    if (item) item.estimado = Math.max(0, Number(input.value || 0));
+  });
+  $("planExtras").querySelectorAll("[data-extra-real]").forEach(input => {
+    const item = plan.extras.find(extra => extra.id === input.dataset.extraReal);
+    if (item) item.real = Math.max(0, Number(input.value || 0));
+  });
+
+  const asignado = [plan.pasajes, plan.comida, plan.deudas, plan.ahorro, plan.inversion]
+    .reduce((total, valor) => total + Number(valor || 0), 0)
+    + plan.extras.reduce((total, item) => total + Number(item.estimado || 0), 0);
+  const disponible = saldoPeriodoCuentas();
+  if (asignado > disponible && !confirm(`El plan supera tu saldo por ${money(asignado - disponible)}. ¿Deseas guardarlo de todos modos?`)) return;
+
+  save();
+  renderAll();
+});
+
+$("btnSugerirPlan").addEventListener("click", () => {
+  const plan = getPlanQuincenal();
+  const disponible = Math.max(0, saldoPeriodoCuentas());
+  const pasajes = Number($("planPasajes").value || plan.pasajes || 0);
+  const comida = Number($("planComida").value || plan.comida || 0);
+  const deudas = Number($("planDeudas").value || deudaSugeridaQuincenal());
+  const esenciales = pasajes + comida + deudas;
+  const libre = Math.max(0, disponible - esenciales);
+
+  $("planPasajes").value = pasajes || "";
+  $("planComida").value = comida || "";
+  $("planDeudas").value = deudas || "";
+  $("planAhorro").value = Math.round(libre * 0.6) || "";
+  $("planInversion").value = Math.round(libre * 0.4) || "";
+});
+
+$("btnAgregarPlanItem").addEventListener("click", () => {
+  const nombre = $("nuevoPlanConcepto").value.trim();
+  if (!nombre) return alert("Escribe el nombre del concepto.");
+  const plan = getPlanQuincenal();
+  plan.extras.push({
+    id: uid(), nombre,
+    estimado: Math.max(0, Number($("nuevoPlanEstimado").value || 0)),
+    real: Math.max(0, Number($("nuevoPlanReal").value || 0)),
+  });
+  save();
+  $("nuevoPlanConcepto").value = "";
+  $("nuevoPlanEstimado").value = "";
+  $("nuevoPlanReal").value = "";
+  renderAll();
+});
+
+$("btnLimpiarPlan").addEventListener("click", () => {
+  if (!confirm("¿Reiniciar las cantidades planeadas de esta quincena?")) return;
+  const plan = getPlanQuincenal();
+  ["pasajes", "comida", "deudas", "ahorro", "inversion"].forEach(key => { plan[key] = 0; plan.real[key] = 0; });
+  plan.extras = [];
+  save();
+  renderAll();
+});
+
+$("btnEstadoResultados").addEventListener("click", () => {
+  renderEstadoResultados();
+  switchTab("reportes");
 });
